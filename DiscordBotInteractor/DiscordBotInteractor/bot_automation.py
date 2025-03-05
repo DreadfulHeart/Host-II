@@ -119,6 +119,21 @@ async def main():
                         await asyncio.sleep(1.5)
                         await interaction.followup.send(message)
 
+                # Randomly determine if one person gets a positive gain (5% chance)
+                positive_gain_chance = random.randint(1, 100)
+                gain_amount = 0
+
+                if positive_gain_chance <= 5:
+                    # Choose a random participant to get a positive gain
+                    gain_participant = random.choice([interaction.user, target])
+
+                    if gain_participant == interaction.user:
+                        gain_amount = round(penalty1 * 0.20)  # 20% positive gain
+                        penalty1 = 0  # Set penalty to 0 for the gain participant
+                    else:
+                        gain_amount = round(penalty2 * 0.20)  # 20% positive gain
+                        penalty2 = 0  # Set penalty to 0 for the gain participant
+
                 # Remove money from both participants
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
@@ -132,11 +147,28 @@ async def main():
                 if result1 and result2:
                     robber_new_balance = result1.get('cash', 'unknown')
                     target_new_balance = result2.get('cash', 'unknown')
-                    await interaction.followup.send(
-                        f"💸 **Gunfight Aftermath:**\n"
-                        f"{interaction.user.mention}: ${robber_new_balance:,} (-${penalty1:,})\n"
-                        f"{target.mention}: ${target_new_balance:,} (-${penalty2:,})"
-                    )
+
+                    if gain_amount > 0:
+                        if gain_participant == interaction.user:
+                            robber_new_balance = int(robber_new_balance) + gain_amount
+                            await interaction.followup.send(
+                                f"💸 **Gunfight Aftermath:**\n"
+                                f"{interaction.user.mention}: ${robber_new_balance:,} (+${gain_amount:,})\n"
+                                f"{target.mention}: ${target_new_balance:,} (-${penalty2:,})"
+                            )
+                        else:
+                            target_new_balance = int(target_new_balance) + gain_amount
+                            await interaction.followup.send(
+                                f"💸 **Gunfight Aftermath:**\n"
+                                f"{interaction.user.mention}: ${robber_new_balance:,} (-${penalty1:,})\n"
+                                f"{target.mention}: ${target_new_balance:,} (+${gain_amount:,})"
+                            )
+                    else:
+                        await interaction.followup.send(
+                            f"💸 **Gunfight Aftermath:**\n"
+                            f"{interaction.user.mention}: ${robber_new_balance:,} (-${penalty1:,})\n"
+                            f"{target.mention}: ${target_new_balance:,} (-${penalty2:,})"
+                        )
 
                 return
 
