@@ -555,44 +555,6 @@ async def main():
         except Exception as e:
             logger.error(f"Error in plock command: {str(e)}")
 
-    @bot.tree.command(name="geturl", description="Get the bot's Replit URL for uptime monitoring (Admin only)")
-    @app_commands.check(lambda interaction: interaction.user.guild_permissions.administrator)
-    async def geturl(interaction: discord.Interaction):
-        try:
-            if not interaction.user.guild_permissions.administrator:
-                await interaction.response.send_message("❌ You need administrator permissions to use this command!", ephemeral=True)
-                return
-
-            repl_slug = os.getenv('REPL_SLUG', 'unknown')
-            repl_owner = os.getenv('REPL_OWNER', 'unknown')
-
-            if repl_slug != 'unknown' and repl_owner != 'unknown':
-                deployment_url = f"https://{repl_slug}-{repl_owner}.replit.app"
-
-                await interaction.response.send_message(
-                    f"🔗 **Bot URL for UptimeRobot:**\n"
-                    f"Use this URL: {deployment_url}\n\n"
-                    f"**Setup Instructions:**\n"
-                    f"1. Make sure you've deployed your bot using Replit's Deployment feature\n"
-                    f"2. Go to UptimeRobot.com and create an account if you don't have one\n"
-                    f"3. Add a new monitor (HTTP(s) type)\n"
-                    f"4. Paste this URL: {deployment_url}\n"
-                    f"5. Set monitoring interval to 5 minutes\n"
-                    f"6. Save and your bot will stay online 24/7",
-                    ephemeral=True
-                )
-            else:
-                await interaction.response.send_message(
-                    "❌ Could not determine the Replit URL. Make sure this is running on Replit.",
-                    ephemeral=True
-                )
-
-        except Exception as e:
-            logger.error(f"Error in geturl command: {str(e)}")
-            await interaction.response.send_message(
-                "❌ An error occurred while getting the URL.",
-                ephemeral=True
-            )
     try:
         async with bot:
             await bot.start(bot.config['TOKEN'])
