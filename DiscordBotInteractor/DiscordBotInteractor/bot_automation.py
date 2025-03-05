@@ -572,49 +572,49 @@ if __name__ == "__main__":
     logger.info("Starting Discord bot")
     asyncio.run(main())
 
-async def get_user_balance(guild_id, user_id, api_key):
-    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-    headers = {
-        "accept": "application/json",
-        "Authorization": api_key
-    }
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json().get('cash', None)
-    else:
-        logger.error(f"Error getting user balance: {response.text}")
-        return None
+    async def get_user_balance(guild_id, user_id, api_key):
+        url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+        headers = {
+            "accept": "application/json",
+            "Authorization": api_key
+        }
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            return response.json().get('cash', None)
+        else:
+            logger.error(f"Error getting user balance: {response.text}")
+            return None
 
-async def remove_money(guild_id, user_id, amount, api_key):
-    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "Authorization": api_key
-    }
-    data = {
-        "cash": -amount
-    }
-    response = requests.patch(url, headers=headers, json=data)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        logger.error(f"Error removing money: {response.text}")
-        return None
+    async def remove_money(guild_id, user_id, amount, api_key):
+        url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "Authorization": api_key
+        }
+        data = {
+            "cash": -amount
+        }
+        response = requests.patch(url, headers=headers, json=data)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            logger.error(f"Error removing money: {response.text}")
+            return None
 
-async def add_money(guild_id, user_id, amount, api_key):
-    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "Authorization": api_key
-    }
-    data = {
-        "cash": amount
-    }
-    response = requests.patch(url, headers=headers, json=data)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        logger.error(f"Error adding money: {response.text}")
-        return None
+    async def add_money(guild_id, user_id, amount, api_key):
+        url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "Authorization": api_key
+        }
+        data = {
+            "cash": amount
+        }
+        response = requests.patch(url, headers=headers, json=data)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            logger.error(f"Error adding money: {response.text}")
+            return None
