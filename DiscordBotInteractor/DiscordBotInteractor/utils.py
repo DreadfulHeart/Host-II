@@ -4,18 +4,53 @@ import random
 from datetime import datetime
 import discord
 from discord import app_commands
+import sys
+import traceback
+import os
 
 def setup_logging():
     """Setup logging configuration"""
+    # Create logs directory if it doesn't exist
+    log_dir = 'logs'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    # Generate log filename with timestamp
+    log_file = os.path.join(log_dir, f'bot_automation_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+    
+    # Configure root logger
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler(f'bot_automation_{datetime.now().strftime("%Y%m%d")}.log')
+            # Console handler with color formatting
+            logging.StreamHandler(sys.stdout),
+            # File handler for persistent logs
+            logging.FileHandler(log_file, encoding='utf-8')
         ]
     )
-    return logging.getLogger('BotAutomation')
+    
+    # Create logger for our application
+    logger = logging.getLogger('BotAutomation')
+    logger.setLevel(logging.DEBUG)  # Capture all levels of logs
+    
+    # Add exception hook to log unhandled exceptions
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        
+        logger.critical("Uncaught exception:", exc_info=(exc_type, exc_value, exc_traceback))
+    
+    sys.excepthook = handle_exception
+    
+    # Log startup information
+    logger.info("=== Bot Starting Up ===")
+    logger.info(f"Log file: {log_file}")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Discord.py version: {discord.__version__}")
+    
+    return logger
 
 class CommandExecutor:
     def __init__(self, bot):
