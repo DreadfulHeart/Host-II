@@ -615,15 +615,14 @@ async def run_web_server():
     await site.start()
     logger.info(f"Web server started on port {port}")
 
-async def main():
+async def start_everything():
     await asyncio.gather(
         run_web_server(),
-        asyncio.run(main())
+        main()
     )
 
 if __name__ == "__main__":
     start_server()
     logger.info("Started Python HTTP server for UptimeRobot")
-
     logger.info("Starting Discord bot")
-    asyncio.run(main())
+    asyncio.run(start_everything())
