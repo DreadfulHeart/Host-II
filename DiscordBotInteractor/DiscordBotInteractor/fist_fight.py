@@ -6,8 +6,7 @@ import logging
 from utils import setup_logging
 import os
 import random
-import requests
-from typing import Dict, List
+from typing import Dict, List, Optional
 from config import load_config
 from api_client import UnbelievaBoatAPI
 
@@ -16,60 +15,22 @@ logger = setup_logging()
 
 # Load configuration and initialize API client
 config = load_config()
-UNBELIEVABOAT_API_KEY = config['UNBELIEVABOAT_API_KEY']
 api_client = UnbelievaBoatAPI()
 
 # Store active fights and bets
 active_fights: Dict[int, Dict] = {}  # message_id -> fight info
 active_bets: Dict[int, List[Dict]] = {}  # message_id -> list of bets
 
-async def get_user_balance(guild_id, user_id, api_key=None):
-    if api_key is None:
-        api_key = UNBELIEVABOAT_API_KEY
-    
-    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-    headers = {
-        "accept": "application/json",
-        "Authorization": api_key
-    }
-    try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            logger.info(f"Got balance for user {user_id}: {data}")
-            return data.get('cash', 0)  # Return 0 if 'cash' is not found
-        else:
-            logger.error(f"Error getting user balance: {response.text}")
-            return None
-    except Exception as e:
-        logger.error(f"Exception getting user balance: {str(e)}")
-        return None
+async def get_user_balance(guild_id: str, user_id: str) -> Optional[int]:
+    """Get user balance using UnbelievaBoat API"""
+    return await api_client.get_balance(guild_id, user_id)
 
-async def update_money(guild_id, user_id, amount, api_key=None):
-    if api_key is None:
-        api_key = UNBELIEVABOAT_API_KEY
-        
-    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "Authorization": api_key
-    }
-    data = {
-        "cash": amount  # For adding money: positive, for removing: negative
-    }
-    try:
-        response = requests.patch(url, headers=headers, json=data)
-        if response.status_code == 200:
-            data = response.json()
-            logger.info(f"Updated balance for user {user_id}, amount {amount}: {data}")
-            return data
-        else:
-            logger.error(f"Error updating money: {response.text}")
-            return None
-    except Exception as e:
-        logger.error(f"Exception updating money: {str(e)}")
-        return None
+async def update_money(guild_id: str, user_id: str, amount: int) -> Optional[Dict]:
+    """Update user balance using UnbelievaBoat API"""
+    if amount > 0:
+        return await api_client.add_money(guild_id, user_id, amount)
+    else:
+        return await api_client.remove_money(guild_id, user_id, abs(amount))
 
 class BetModal(Modal):
     def __init__(self, message_id: int, fighter: discord.Member):
@@ -173,7 +134,7 @@ class FightButton(Button):
             ]
             
             while challenger_hp > 0 and target_hp > 0:
-                await asyncio.sleep(2)  # Delay between rounds
+                await asyncio.sleep(4)  # Increased delay between rounds
                 
                 # Randomly determine attacker and defender
                 if random.random() < 0.5:
@@ -202,7 +163,6 @@ class FightButton(Button):
             
             # Process bets
             if message_id in active_bets:
-                api_key = UNBELIEVABOAT_API_KEY
                 guild_id = str(interaction.guild_id)
                 
                 for bet in active_bets[message_id]:
@@ -238,11 +198,7 @@ class BetButton(Button):
             await interaction.response.send_message("This fight is no longer active!", ephemeral=True)
             return
             
-        if not fight_info.get('accepted'):
-            await interaction.response.send_message("Wait for the fight to be accepted before placing bets!", ephemeral=True)
-            return
-            
-        # Show betting modal
+        # Show betting modal - removed acceptance check to allow pre-fight betting
         await interaction.response.send_modal(BetModal(self.message_id, self.fighter))
 
 class FightView(View):
@@ -263,6 +219,25 @@ class FightView(View):
             if isinstance(item, BetButton):
                 item.message_id = message_id
 
+    async def on_timeout(self):
+        """Handle timeout - refund all bets if fight wasn't accepted"""
+        if self.message_id in active_fights and not active_fights[self.message_id]['accepted']:
+            if self.message_id in active_bets:
+                guild_id = str(self.message.guild.id)
+                for bet in active_bets[self.message_id]:
+                    # Refund the bet amount
+                    await update_money(guild_id, str(bet['user'].id), bet['amount'])
+                    try:
+                        await self.message.channel.send(f"💰 Refunded ${bet['amount']:,} to {bet['user'].mention} as the fight was not accepted.")
+                    except:
+                        pass  # Message might fail to send
+                del active_bets[self.message_id]
+            del active_fights[self.message_id]
+            try:
+                await self.message.edit(content="⏰ Challenge has expired!", view=None)
+            except:
+                pass  # Message might have been deleted
+
 async def setup_fight_commands(bot):
     @bot.tree.command(name="fight", description="Challenge another player to a fist fight")
     @app_commands.describe(target="The player you want to challenge")
@@ -281,12 +256,14 @@ async def setup_fight_commands(bot):
         # Send the challenge message
         response = await interaction.response.send_message(
             f"🥊 {interaction.user.mention} has challenged {target.mention} to a fight!\n"
-            f"The challenged player has 3 minutes to accept!",
+            f"Place your bets now! The challenged player has 3 minutes to accept.\n"
+            f"If the fight is not accepted, all bets will be refunded.",
             view=view
         )
         
         # Get the message from the response
         message = await interaction.original_response()
+        view.message = message  # Store message for timeout handling
         await view.set_message_id(message.id)
         
         # Store fight information
@@ -295,12 +272,3 @@ async def setup_fight_commands(bot):
             'target': target,
             'accepted': False,
         }
-        
-        # Set up timeout to clean up if fight not accepted
-        await asyncio.sleep(180)  # 3 minutes
-        if message.id in active_fights and not active_fights[message.id]['accepted']:
-            del active_fights[message.id]
-            try:
-                await interaction.edit_original_response(content="⏰ Challenge has expired!", view=None)
-            except:
-                pass  # Message might have been deleted
