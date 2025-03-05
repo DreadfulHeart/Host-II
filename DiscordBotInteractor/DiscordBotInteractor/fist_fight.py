@@ -9,13 +9,15 @@ import random
 import requests
 from typing import Dict, List
 from config import load_config
+from api_client import UnbelievaBoatAPI
 
 # Setup logging
 logger = setup_logging()
 
-# Load configuration
+# Load configuration and initialize API client
 config = load_config()
 UNBELIEVABOAT_API_KEY = config['UNBELIEVABOAT_API_KEY']
+api_client = UnbelievaBoatAPI()
 
 # Store active fights and bets
 active_fights: Dict[int, Dict] = {}  # message_id -> fight info
