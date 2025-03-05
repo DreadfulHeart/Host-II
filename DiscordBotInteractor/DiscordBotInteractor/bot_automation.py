@@ -1,3 +1,62 @@
+import os
+import sys
+import asyncio
+import logging
+import random
+import discord
+from discord import app_commands
+import aiohttp
+import psutil
+import signal
+from datetime import datetime
+
+logger = logging.getLogger('BotAutomation')
+
+def check_port_process(port):
+    """Check if the port is in use by this bot or another process"""
+    try:
+        for conn in psutil.net_connections(kind='inet'):
+            if conn.laddr.port == port:
+                # Get process using this port
+                process = psutil.Process(conn.pid)
+                current_pid = os.getpid()
+                
+                # Check if it's our own process
+                if process.pid == current_pid:
+                    return None
+                elif 'python' in process.name().lower():
+                    # Check if it's another instance of our bot
+                    cmdline = process.cmdline()
+                    if any('bot_automation.py' in cmd for cmd in cmdline):
+                        return process
+                
+                return None  # Port used by another application
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+    return None
+
+async def cleanup_old_instance(process):
+    """Cleanup an old instance of the bot"""
+    try:
+        logger.info(f"Attempting to terminate old bot instance (PID: {process.pid})")
+        process.terminate()
+        
+        # Wait for process to terminate
+        try:
+            process.wait(timeout=5)
+            logger.info("Old bot instance terminated successfully")
+        except psutil.TimeoutExpired:
+            logger.warning("Old bot instance didn't terminate, forcing kill")
+            process.kill()
+            process.wait(timeout=5)
+            
+        # Small delay to ensure port is released
+        await asyncio.sleep(2)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to cleanup old bot instance: {str(e)}")
+        return False
+
 import discord
 from discord import app_commands
 import asyncio
@@ -570,12 +629,45 @@ async def run_web_server():
     app.router.add_get('/', handle_health_check)
     app.router.add_get('/health', handle_health_check)
     
-    port = int(os.environ.get('PORT', 10000))
+    # Get port from environment with fallback ports
+    primary_port = int(os.environ.get('PORT', 10000))
+    fallback_ports = [10001, 10002, 10003, 8080, 8081]
+    
     runner = aiohttp.web.AppRunner(app)
     await runner.setup()
-    site = aiohttp.web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    logger.info(f"Web server started on port {port}")
+    
+    # Try primary port first, then fallbacks
+    for port in [primary_port] + fallback_ports:
+        try:
+            site = aiohttp.web.TCPSite(runner, '0.0.0.0', port)
+            await site.start()
+            logger.info(f"Web server started successfully on port {port}")
+            return
+        except OSError as e:
+            if e.errno == 98:  # Address already in use
+                # Check if port is used by another instance of our bot
+                old_process = check_port_process(port)
+                if old_process:
+                    logger.warning(f"Port {port} is in use by another instance of this bot")
+                    if await cleanup_old_instance(old_process):
+                        # Try starting the server again on this port
+                        try:
+                            site = aiohttp.web.TCPSite(runner, '0.0.0.0', port)
+                            await site.start()
+                            logger.info(f"Web server started successfully on port {port} after cleanup")
+                            return
+                        except OSError:
+                            logger.warning(f"Port {port} still in use after cleanup, trying next port...")
+                    else:
+                        logger.warning(f"Failed to cleanup old instance, trying next port...")
+                else:
+                    logger.warning(f"Port {port} is in use by another application, trying next port...")
+            else:
+                logger.error(f"Failed to start web server on port {port}: {str(e)}")
+                raise  # Re-raise if it's a different error
+    
+    # If we get here, all ports failed
+    raise RuntimeError("Failed to start web server: all ports are in use")
 
 async def start_everything():
     try:
