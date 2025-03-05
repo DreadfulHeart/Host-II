@@ -7,8 +7,9 @@ import os
 from discord.ext import commands
 from config import load_config
 from utils import setup_logging
-from api_client import UnbelievaBoatAPI
+#from api_client import UnbelievaBoatAPI # Removed as we are using our custom requests call
 from keep_alive import start_server
+import requests
 
 # Setup logging
 logger = setup_logging()
@@ -21,7 +22,7 @@ class AutomationBot(commands.Bot):
         intents.guilds = True
         super().__init__(command_prefix="!", intents=intents)
         self.config = load_config()
-        self.unbelievaboat = UnbelievaBoatAPI()
+        #self.unbelievaboat = UnbelievaBoatAPI() # Removed as we are using our custom requests call
 
     async def setup_hook(self):
         logger.info("Bot is setting up...")
@@ -138,37 +139,32 @@ async def main():
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
                 target_user_id = str(target.id)
+                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
                 # Remove from robber
-                result1 = await bot.unbelievaboat.remove_money(guild_id, robber_user_id, penalty1)
+                await remove_money(guild_id, robber_user_id, penalty1, api_key)
                 # Remove from target
-                result2 = await bot.unbelievaboat.remove_money(guild_id, target_user_id, penalty2)
+                await remove_money(guild_id, target_user_id, penalty2, api_key)
 
-                if result1 and result2:
-                    robber_new_balance = result1.get('cash', 'unknown')
-                    target_new_balance = result2.get('cash', 'unknown')
-
-                    if gain_amount > 0:
-                        if gain_participant == interaction.user:
-                            robber_new_balance = int(robber_new_balance) + gain_amount
-                            await interaction.followup.send(
-                                f"💸 **Gunfight Aftermath:**\n"
-                                f"{interaction.user.mention}: ${robber_new_balance:,} (+${gain_amount:,})\n"
-                                f"{target.mention}: ${target_new_balance:,} (-${penalty2:,})"
-                            )
-                        else:
-                            target_new_balance = int(target_new_balance) + gain_amount
-                            await interaction.followup.send(
-                                f"💸 **Gunfight Aftermath:**\n"
-                                f"{interaction.user.mention}: ${robber_new_balance:,} (-${penalty1:,})\n"
-                                f"{target.mention}: ${target_new_balance:,} (+${gain_amount:,})"
-                            )
+                if gain_amount > 0:
+                    if gain_participant == interaction.user:
+                        await interaction.followup.send(
+                            f"💸 **Gunfight Aftermath:**\n"
+                            f"{interaction.user.mention}: +${gain_amount:,}\n"
+                            f"{target.mention}: -${penalty2:,}"
+                        )
                     else:
                         await interaction.followup.send(
                             f"💸 **Gunfight Aftermath:**\n"
-                            f"{interaction.user.mention}: ${robber_new_balance:,} (-${penalty1:,})\n"
-                            f"{target.mention}: ${target_new_balance:,} (-${penalty2:,})"
+                            f"{interaction.user.mention}: -${penalty1:,}\n"
+                            f"{target.mention}: +${gain_amount:,}"
                         )
+                else:
+                    await interaction.followup.send(
+                        f"💸 **Gunfight Aftermath:**\n"
+                        f"{interaction.user.mention}: -${penalty1:,}\n"
+                        f"{target.mention}: -${penalty2:,}"
+                    )
 
                 return
 
@@ -214,15 +210,9 @@ async def main():
                 # Remove penalty money from robber
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
+                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
-                result = await bot.unbelievaboat.remove_money(guild_id, robber_user_id, penalty)
-                if result:
-                    robber_new_balance = result.get('cash', 'unknown')
-                    await interaction.followup.send(
-                        f"💸 **Medical Bill:** ${penalty:,}\n"
-                        f"Your new balance: ${robber_new_balance:,}"
-                    )
-
+                await remove_money(guild_id, robber_user_id, penalty, api_key)
                 return
 
             # Send initial response for normal robbery
@@ -235,9 +225,10 @@ async def main():
             amount = random.randint(25000, 50000)
 
             logger.info(f"Attempting to remove {amount} from user {target_user_id} in guild {guild_id}")
+            api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
             # Get target's balance before robbing
-            target_balance = await bot.unbelievaboat.get_user_balance(guild_id, target_user_id)
+            target_balance = await get_user_balance(guild_id, target_user_id, api_key)
             if target_balance:
                 # Check if robbery would put target below zero
                 if target_balance < amount:
@@ -245,14 +236,14 @@ async def main():
                     logger.info(f"Limiting robbery amount to {amount} to prevent negative balance")
 
                 # Remove money from target
-                result = await bot.unbelievaboat.remove_money(guild_id, target_user_id, amount)
+                result = await remove_money(guild_id, target_user_id, amount, api_key)
 
                 if result:
                     target_new_balance = result.get('cash', 'unknown')
 
                     # Add the stolen money to the robber
                     logger.info(f"Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
-                    add_result = await bot.unbelievaboat.add_money(guild_id, robber_user_id, amount)
+                    add_result = await add_money(guild_id, robber_user_id, amount, api_key)
 
                     if add_result:
                         robber_new_balance = add_result.get('cash', 'unknown')
@@ -353,14 +344,9 @@ async def main():
                 # Remove penalty money from robber
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
+                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
-                result = await bot.unbelievaboat.remove_money(guild_id, robber_user_id, penalty)
-                if result:
-                    robber_new_balance = result.get('cash', 'unknown')
-                    await interaction.followup.send(
-                        f"💸 **Medical Bill:** ${penalty:,}\n"
-                        f"Your new balance: ${robber_new_balance:,}"
-                    )
+                await remove_money(guild_id, robber_user_id, penalty, api_key)
 
                 return
 
@@ -454,11 +440,12 @@ async def main():
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
                 target_user_id = str(target.id)
+                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
                 # Remove from robber
-                result1 = await bot.unbelievaboat.remove_money(guild_id, robber_user_id, penalty1)
+                await remove_money(guild_id, robber_user_id, penalty1, api_key)
                 # Remove from target
-                result2 = await bot.unbelievaboat.remove_money(guild_id, target_user_id, penalty2)
+                await remove_money(guild_id, target_user_id, penalty2, api_key)
 
                 if result1 and result2:
                     robber_new_balance = result1.get('cash', 'unknown')
@@ -481,9 +468,10 @@ async def main():
             amount = random.randint(500, 10000)
 
             logger.info(f"Plock robbery: Attempting to remove {amount} from user {target_user_id} in guild {guild_id}")
+            api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
             # Get target's balance before robbing
-            target_balance = await bot.unbelievaboat.get_user_balance(guild_id, target_user_id)
+            target_balance = await get_user_balance(guild_id, target_user_id, api_key)
             if target_balance:
                 # Check if robbery would put target below zero
                 if target_balance < amount:
@@ -491,14 +479,14 @@ async def main():
                     logger.info(f"Limiting robbery amount to {amount} to prevent negative balance")
 
                 # Remove money from target
-                result = await bot.unbelievaboat.remove_money(guild_id, target_user_id, amount)
+                result = await remove_money(guild_id, target_user_id, amount, api_key)
 
                 if result:
                     target_new_balance = result.get('cash', 'unknown')
 
                     # Add the stolen money to the robber
                     logger.info(f"Plock robbery: Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
-                    add_result = await bot.unbelievaboat.add_money(guild_id, robber_user_id, amount)
+                    add_result = await add_money(guild_id, robber_user_id, amount, api_key)
 
                     if add_result:
                         robber_new_balance = add_result.get('cash', 'unknown')
@@ -583,3 +571,50 @@ if __name__ == "__main__":
     # Run the Discord bot
     logger.info("Starting Discord bot")
     asyncio.run(main())
+
+async def get_user_balance(guild_id, user_id, api_key):
+    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+    headers = {
+        "accept": "application/json",
+        "Authorization": api_key
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json().get('cash', None)
+    else:
+        logger.error(f"Error getting user balance: {response.text}")
+        return None
+
+async def remove_money(guild_id, user_id, amount, api_key):
+    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "Authorization": api_key
+    }
+    data = {
+        "cash": -amount
+    }
+    response = requests.patch(url, headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logger.error(f"Error removing money: {response.text}")
+        return None
+
+async def add_money(guild_id, user_id, amount, api_key):
+    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "Authorization": api_key
+    }
+    data = {
+        "cash": amount
+    }
+    response = requests.patch(url, headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logger.error(f"Error adding money: {response.text}")
+        return None
