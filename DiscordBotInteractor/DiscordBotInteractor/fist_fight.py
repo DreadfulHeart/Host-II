@@ -120,7 +120,8 @@ class FightButton(Button):
                 
             # Start the fight
             fight_info['accepted'] = True
-            self.disabled = True
+            for item in self.view.children:
+                item.disabled = True
             await interaction.message.edit(view=self.view)
             
             # Fight sequence
@@ -130,16 +131,27 @@ class FightButton(Button):
             await interaction.response.send_message(f"🥊 The fight between {challenger.mention} and {target.mention} begins!")
             
             # Fight mechanics
-            rounds = []
             challenger_hp = 100
             target_hp = 100
             
             moves = [
-                ("throws a quick jab", "dodges the jab", "lands a solid hit", 10),
-                ("goes for an uppercut", "steps back", "connects with devastating force", 20),
-                ("attempts a roundhouse kick", "blocks the kick", "lands perfectly", 25),
-                ("tries a body shot", "guards their body", "hits the mark", 15),
-                ("launches a haymaker", "ducks under", "catches them off guard", 30)
+                ("throws a devastating haymaker", "barely dodges the punch", "CONNECTS WITH BRUTAL FORCE!", 40),
+                ("goes for a flying knee", "blocks with their arms", "SMASHES INTO THEIR FACE!", 45),
+                ("attempts a spinning back kick", "tries to step away", "LANDS PERFECTLY ON THE JAW!", 50),
+                ("launches a brutal combo", "covers up defensively", "BREAKS THROUGH THE GUARD!", 35),
+                ("charges with a superman punch", "attempts to counter", "LANDS CLEAN!", 45),
+                ("goes for a takedown", "sprawls to defend", "SLAMS THEM TO THE GROUND!", 30),
+                ("attempts an elbow strike", "tries to parry", "SLICES THROUGH THEIR DEFENSE!", 40),
+                ("throws a liver shot", "tightens their core", "FINDS ITS MARK!", 45),
+                ("goes for a head kick", "ducks under", "CONNECTS WITH DEVASTATING IMPACT!", 55)
+            ]
+            
+            critical_hits = [
+                "💥 CRITICAL HIT! The strike hits a vital point!",
+                "💫 SUPER EFFECTIVE! That's going to leave a mark!",
+                "⚡ PERFECT TIMING! Couldn't have landed better!",
+                "🌟 DEVASTATING BLOW! The crowd goes wild!",
+                "💢 MASSIVE DAMAGE! That might be a fight-ender!"
             ]
             
             while challenger_hp > 0 and target_hp > 0:
@@ -148,23 +160,44 @@ class FightButton(Button):
                 # Randomly determine attacker and defender
                 if random.random() < 0.5:
                     attacker, defender = challenger, target
-                    hp_to_reduce = 'target_hp'
+                    hp_to_reduce = target_hp
                 else:
                     attacker, defender = target, challenger
-                    hp_to_reduce = 'challenger_hp'
+                    hp_to_reduce = challenger_hp
                 
                 # Pick a random move
-                move, dodge, hit, damage = random.choice(moves)
+                move, dodge, hit, base_damage = random.choice(moves)
                 
-                # 60% chance to hit
-                if random.random() < 0.6:
-                    locals()[hp_to_reduce] -= damage
-                    round_msg = f"💥 {attacker.mention} {move} and {hit}! (-{damage} HP)"
+                # 70% chance to hit, with possibility of critical hits
+                if random.random() < 0.7:
+                    # 20% chance for critical hit (1.5x damage)
+                    is_critical = random.random() < 0.2
+                    damage = round(base_damage * 1.5) if is_critical else base_damage
+                    
+                    if attacker == challenger:
+                        target_hp -= damage
+                    else:
+                        challenger_hp -= damage
+                    
+                    round_msg = f"💥 {attacker.mention} {move} and {hit} (-{damage} HP)"
+                    if is_critical:
+                        round_msg = f"{random.choice(critical_hits)}\n{round_msg}"
                 else:
                     round_msg = f"💨 {attacker.mention} {move} but {defender.mention} {dodge}!"
                 
-                rounds.append(round_msg)
-                await interaction.followup.send(f"{round_msg}\n{challenger.display_name}: {challenger_hp}HP | {target.display_name}: {target_hp}HP")
+                # Ensure HP doesn't go below 0
+                challenger_hp = max(0, challenger_hp)
+                target_hp = max(0, target_hp)
+                
+                # Show HP bars
+                challenger_bar = "❤" * (challenger_hp // 10) + "🖤" * ((100 - challenger_hp) // 10)
+                target_bar = "❤" * (target_hp // 10) + "🖤" * ((100 - target_hp) // 10)
+                
+                await interaction.followup.send(
+                    f"{round_msg}\n\n"
+                    f"{challenger.display_name}: {challenger_hp}HP\n{challenger_bar}\n\n"
+                    f"{target.display_name}: {target_hp}HP\n{target_bar}"
+                )
             
             # Determine winner
             winner = challenger if target_hp <= 0 else target
@@ -184,7 +217,10 @@ class FightButton(Button):
                 
                 del active_bets[message_id]
             
-            await interaction.followup.send(f"🏆 {winner.mention} has won the fight against {loser.mention}!")
+            await interaction.followup.send(
+                f"🏆 {winner.mention} has won the fight against {loser.mention} in an epic battle!\n"
+                f"{'💀 It was a KNOCKOUT!' if abs(challenger_hp - target_hp) > 50 else '👊 What a close fight!'}"
+            )
             del active_fights[message_id]
 
 class BetButton(Button):
@@ -208,11 +244,7 @@ class BetButton(Button):
             await interaction.response.send_message("This fight is no longer active!", ephemeral=True)
             return
             
-        if not fight_info.get('accepted'):
-            await interaction.response.send_message("Wait for the fight to be accepted before placing bets!", ephemeral=True)
-            return
-            
-        # Show betting modal
+        # Allow betting before the fight is accepted
         await interaction.response.send_modal(BetModal(self.message_id, self.fighter))
 
 class FightView(View):
@@ -251,7 +283,7 @@ async def setup_fight_commands(bot):
         # Send the challenge message
         response = await interaction.response.send_message(
             f"🥊 {interaction.user.mention} has challenged {target.mention} to a fight!\n"
-            f"The challenged player has 3 minutes to accept!",
+            f"Place your bets now! The challenged player has 3 minutes to accept!",
             view=view
         )
         
@@ -269,8 +301,23 @@ async def setup_fight_commands(bot):
         # Set up timeout to clean up if fight not accepted
         await asyncio.sleep(180)  # 3 minutes
         if message.id in active_fights and not active_fights[message.id]['accepted']:
+            # Return money to betters if fight wasn't accepted
+            if message.id in active_bets:
+                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
+                guild_id = str(interaction.guild_id)
+                
+                for bet in active_bets[message.id]:
+                    # Return the bet amount
+                    await update_money(guild_id, str(bet['user'].id), bet['amount'], api_key)
+                    try:
+                        await interaction.followup.send(f"💰 Returning ${bet['amount']:,} to {bet['user'].mention} as the fight was not accepted.")
+                    except:
+                        pass
+                
+                del active_bets[message.id]
+            
             del active_fights[message.id]
             try:
-                await interaction.edit_original_response(content="⏰ Challenge has expired!", view=None)
+                await interaction.edit_original_response(content="⏰ Challenge has expired! All bets have been returned.", view=None)
             except:
                 pass  # Message might have been deleted
