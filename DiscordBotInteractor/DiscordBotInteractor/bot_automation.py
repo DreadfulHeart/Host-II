@@ -68,11 +68,61 @@ class AutomationBot(commands.Bot):
         intents.guilds = True
         super().__init__(command_prefix="!", intents=intents)
         self.config = load_config()
+        self.is_active = True  # Bot state flag
 
     async def setup_hook(self):
         logger.info("Bot is setting up...")
         await setup_fight_commands(self)
-        await self.tree.sync()
+        
+        # Add admin commands
+        @self.tree.command(name="shutdown", description="[ADMIN] Put the bot in sleep mode")
+        @app_commands.default_permissions(administrator=True)  # Only visible to admins
+        @app_commands.checks.has_permissions(administrator=True)  # Double-check permissions
+        async def shutdown(interaction: discord.Interaction):
+            if not interaction.user.guild_permissions.administrator:
+                await interaction.response.send_message("❌ This command requires administrator permissions!", ephemeral=True)
+                return
+                
+            self.is_active = False
+            await interaction.response.send_message("💤 Bot is now in sleep mode. Use `/active` to wake it up.", ephemeral=True)
+            await self.change_presence(status=discord.Status.idle, activity=discord.Game(name="Sleeping..."))
+            
+        @self.tree.command(name="active", description="[ADMIN] Wake up the bot from sleep mode")
+        @app_commands.default_permissions(administrator=True)  # Only visible to admins
+        @app_commands.checks.has_permissions(administrator=True)  # Double-check permissions
+        async def activate(interaction: discord.Interaction):
+            if not interaction.user.guild_permissions.administrator:
+                await interaction.response.send_message("❌ This command requires administrator permissions!", ephemeral=True)
+                return
+                
+            self.is_active = True
+            await interaction.response.send_message("✅ Bot is now active!", ephemeral=True)
+            await self.change_presence(status=discord.Status.online, activity=discord.Game(name="Ready to serve!"))
+            
+        # Add check for bot state to all commands
+        @self.tree.error
+        async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+            if isinstance(error, app_commands.errors.CheckFailure):
+                if not self.is_active and interaction.command and interaction.command.name not in ['shutdown', 'active']:
+                    await interaction.response.send_message("💤 Bot is currently in sleep mode. An administrator must use `/active` to wake it up.", ephemeral=True)
+                else:
+                    await interaction.response.send_message("❌ You don't have permission to use this command!", ephemeral=True)
+            else:
+                await interaction.response.send_message("❌ An error occurred while processing the command.", ephemeral=True)
+                logger.error(f"Command error: {str(error)}")
+                
+        # Add the sleep mode check to all non-admin commands
+        async def is_bot_active(interaction: discord.Interaction) -> bool:
+            command = interaction.command
+            if command and command.name in ['shutdown', 'active']:
+                return True
+            return self.is_active
+            
+        for cmd in self.tree.get_commands():
+            if cmd.name not in ['shutdown', 'active']:
+                cmd.add_check(is_bot_active)
+                
+        await self.tree.sync()  # Sync commands with Discord
 
     async def on_ready(self):
         logger.info(f"Logged in as {self.user}")
