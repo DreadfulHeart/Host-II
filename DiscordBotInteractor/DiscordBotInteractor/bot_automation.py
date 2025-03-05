@@ -1,3 +1,39 @@
+import discord
+from discord import app_commands
+import asyncio
+import logging
+import random
+import os
+from discord.ext import commands
+from config import load_config
+from utils import setup_logging
+#from api_client import UnbelievaBoatAPI # Removed as we are using our custom requests call
+from keep_alive import start_server
+import requests
+
+# Setup logging
+logger = setup_logging()
+
+class AutomationBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.members = True
+        intents.guilds = True
+        super().__init__(command_prefix="!", intents=intents)
+        self.config = load_config()
+        #self.unbelievaboat = UnbelievaBoatAPI() # Removed as we are using our custom requests call
+
+    async def setup_hook(self):
+        logger.info("Bot is setting up...")
+        await self.tree.sync()
+
+    async def on_ready(self):
+        logger.info(f"Logged in as {self.user}")
+
+async def main():
+    bot = AutomationBot()
+
     @bot.tree.command(name="woozie", description="Rob someone at gunpoint (requires Woozie role)")
     @app_commands.describe(target="The user to rob (optional, random if not specified)")
     async def woozie(interaction: discord.Interaction, target: discord.Member = None):
@@ -187,6 +223,9 @@
             target_user_id = str(target.id)
             robber_user_id = str(interaction.user.id)
             amount = random.randint(25000, 50000)
+
+            logger.info(f"Attempting to remove {amount} from user {target_user_id} in guild {guild_id}")
+            api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
             # Get target's balance before robbing
             target_balance = await get_user_balance(guild_id, target_user_id, api_key)
@@ -533,49 +572,49 @@ if __name__ == "__main__":
     logger.info("Starting Discord bot")
     asyncio.run(main())
 
-    async def get_user_balance(guild_id, user_id, api_key):
-        url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-        headers = {
-            "accept": "application/json",
-            "Authorization": api_key
-        }
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            return response.json().get('cash', None)
-        else:
-            logger.error(f"Error getting user balance: {response.text}")
-            return None
+async def get_user_balance(guild_id, user_id, api_key):
+    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+    headers = {
+        "accept": "application/json",
+        "Authorization": api_key
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json().get('cash', None)
+    else:
+        logger.error(f"Error getting user balance: {response.text}")
+        return None
 
-    async def remove_money(guild_id, user_id, amount, api_key):
-        url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "Authorization": api_key
-        }
-        data = {
-            "cash": -amount
-        }
-        response = requests.patch(url, headers=headers, json=data)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logger.error(f"Error removing money: {response.text}")
-            return None
+async def remove_money(guild_id, user_id, amount, api_key):
+    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "Authorization": api_key
+    }
+    data = {
+        "cash": -amount
+    }
+    response = requests.patch(url, headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logger.error(f"Error removing money: {response.text}")
+        return None
 
-    async def add_money(guild_id, user_id, amount, api_key):
-        url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "Authorization": api_key
-        }
-        data = {
-            "cash": amount
-        }
-        response = requests.patch(url, headers=headers, json=data)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logger.error(f"Error adding money: {response.text}")
-            return None
+async def add_money(guild_id, user_id, amount, api_key):
+    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "Authorization": api_key
+    }
+    data = {
+        "cash": amount
+    }
+    response = requests.patch(url, headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logger.error(f"Error adding money: {response.text}")
+        return None
