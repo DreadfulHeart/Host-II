@@ -6,49 +6,41 @@ import random
 import discord
 from discord import app_commands
 import aiohttp
-import psutil
 import signal
 from datetime import datetime
+import subprocess
 
 logger = logging.getLogger('BotAutomation')
 
-def check_port_process(port):
-    """Check if the port is in use by this bot or another process"""
-    try:
-        for conn in psutil.net_connections(kind='inet'):
-            if conn.laddr.port == port:
-                # Get process using this port
-                process = psutil.Process(conn.pid)
-                current_pid = os.getpid()
-                
-                # Check if it's our own process
-                if process.pid == current_pid:
-                    return None
-                elif 'python' in process.name().lower():
-                    # Check if it's another instance of our bot
-                    cmdline = process.cmdline()
-                    if any('bot_automation.py' in cmd for cmd in cmdline):
-                        return process
-                
-                return None  # Port used by another application
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        pass
+def find_process_using_port(port):
+    """Find if another instance of our bot is using this port"""
+    if os.name == 'nt':  # Windows
+        try:
+            # Use netstat to find process using the port
+            cmd = f'netstat -ano | findstr :{port}'
+            output = subprocess.check_output(cmd, shell=True).decode()
+            if output:
+                pid = output.strip().split()[-1]
+                return int(pid)
+        except:
+            pass
+    else:  # Linux/Unix
+        try:
+            cmd = f'lsof -i :{port} -t'
+            pid = subprocess.check_output(cmd, shell=True).decode().strip()
+            return int(pid)
+        except:
+            pass
     return None
 
-async def cleanup_old_instance(process):
+async def cleanup_old_instance(pid):
     """Cleanup an old instance of the bot"""
     try:
-        logger.info(f"Attempting to terminate old bot instance (PID: {process.pid})")
-        process.terminate()
-        
-        # Wait for process to terminate
-        try:
-            process.wait(timeout=5)
-            logger.info("Old bot instance terminated successfully")
-        except psutil.TimeoutExpired:
-            logger.warning("Old bot instance didn't terminate, forcing kill")
-            process.kill()
-            process.wait(timeout=5)
+        logger.info(f"Attempting to terminate old bot instance (PID: {pid})")
+        if os.name == 'nt':  # Windows
+            subprocess.run(['taskkill', '/PID', str(pid), '/F'], check=True)
+        else:  # Linux/Unix
+            os.kill(pid, signal.SIGTERM)
             
         # Small delay to ensure port is released
         await asyncio.sleep(2)
@@ -645,11 +637,11 @@ async def run_web_server():
             return
         except OSError as e:
             if e.errno == 98:  # Address already in use
-                # Check if port is used by another instance of our bot
-                old_process = check_port_process(port)
-                if old_process:
-                    logger.warning(f"Port {port} is in use by another instance of this bot")
-                    if await cleanup_old_instance(old_process):
+                # Check if port is used by another process
+                pid = find_process_using_port(port)
+                if pid and pid != os.getpid():  # If process found and it's not us
+                    logger.warning(f"Port {port} is in use by process {pid}")
+                    if await cleanup_old_instance(pid):
                         # Try starting the server again on this port
                         try:
                             site = aiohttp.web.TCPSite(runner, '0.0.0.0', port)
@@ -659,9 +651,9 @@ async def run_web_server():
                         except OSError:
                             logger.warning(f"Port {port} still in use after cleanup, trying next port...")
                     else:
-                        logger.warning(f"Failed to cleanup old instance, trying next port...")
+                        logger.warning(f"Failed to cleanup process, trying next port...")
                 else:
-                    logger.warning(f"Port {port} is in use by another application, trying next port...")
+                    logger.warning(f"Port {port} is in use, trying next port...")
             else:
                 logger.error(f"Failed to start web server on port {port}: {str(e)}")
                 raise  # Re-raise if it's a different error
