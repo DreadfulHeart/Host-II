@@ -188,16 +188,20 @@ class FightButton(Button):
             del active_fights[message_id]
 
 class BetButton(Button):
-    def __init__(self, message_id: int, fighter: discord.Member):
+    def __init__(self, fighter: discord.Member):
         super().__init__(
             style=discord.ButtonStyle.secondary,
             label=f"Bet on {fighter.display_name}",
-            custom_id=f'bet_{message_id}_{fighter.id}'
+            custom_id=f'temp_bet_{fighter.id}'  # Temporary ID, will be updated
         )
         self.fighter = fighter
-        self.message_id = message_id
+        self.message_id = None  # Will be set after message is sent
 
     async def callback(self, interaction: discord.Interaction):
+        if not self.message_id:
+            await interaction.response.send_message("Error: Fight not properly initialized", ephemeral=True)
+            return
+
         fight_info = active_fights.get(self.message_id)
         
         if not fight_info:
@@ -212,11 +216,22 @@ class BetButton(Button):
         await interaction.response.send_modal(BetModal(self.message_id, self.fighter))
 
 class FightView(View):
-    def __init__(self, message_id: int, challenger: discord.Member, target: discord.Member, timeout: float = 180):
+    def __init__(self, challenger: discord.Member, target: discord.Member, timeout: float = 180):
         super().__init__(timeout=timeout)
-        self.add_item(FightButton(f'accept_{message_id}', "Accept Fight", discord.ButtonStyle.success))
-        self.add_item(BetButton(message_id, challenger))
-        self.add_item(BetButton(message_id, target))
+        self.message_id = None  # Will be set after the message is sent
+        self.challenger = challenger
+        self.target = target
+        self.accept_button = FightButton('accept', "Accept Fight", discord.ButtonStyle.success)
+        self.add_item(self.accept_button)
+        self.add_item(BetButton(challenger))
+        self.add_item(BetButton(target))
+
+    async def set_message_id(self, message_id: int):
+        self.message_id = message_id
+        self.accept_button.custom_id = f'accept_{message_id}'
+        for item in self.children:
+            if isinstance(item, BetButton):
+                item.message_id = message_id
 
 async def setup_fight_commands(bot):
     @bot.tree.command(name="fight", description="Challenge another player to a fist fight")
@@ -230,15 +245,22 @@ async def setup_fight_commands(bot):
             await interaction.response.send_message("You can't fight yourself!", ephemeral=True)
             return
 
+        # Create the view
+        view = FightView(interaction.user, target)
+        
         # Send the challenge message
-        await interaction.response.send_message(
+        response = await interaction.response.send_message(
             f"🥊 {interaction.user.mention} has challenged {target.mention} to a fight!\n"
             f"The challenged player has 3 minutes to accept!",
-            view=FightView(interaction.message.id, interaction.user, target)
+            view=view
         )
         
+        # Get the message from the response
+        message = await interaction.original_response()
+        await view.set_message_id(message.id)
+        
         # Store fight information
-        active_fights[interaction.message.id] = {
+        active_fights[message.id] = {
             'challenger': interaction.user,
             'target': target,
             'accepted': False,
@@ -246,8 +268,8 @@ async def setup_fight_commands(bot):
         
         # Set up timeout to clean up if fight not accepted
         await asyncio.sleep(180)  # 3 minutes
-        if interaction.message.id in active_fights and not active_fights[interaction.message.id]['accepted']:
-            del active_fights[interaction.message.id]
+        if message.id in active_fights and not active_fights[message.id]['accepted']:
+            del active_fights[message.id]
             try:
                 await interaction.edit_original_response(content="⏰ Challenge has expired!", view=None)
             except:
