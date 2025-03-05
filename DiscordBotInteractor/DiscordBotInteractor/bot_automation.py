@@ -174,7 +174,7 @@ async def main():
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
                 target_user_id = str(target.id)
-                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
+                api_key = os.getenv('UNBELIEVABOAT_API_TOKEN')
 
                 await remove_money(guild_id, robber_user_id, penalty1, api_key)
                 await remove_money(guild_id, target_user_id, penalty2, api_key)
@@ -236,7 +236,7 @@ async def main():
 
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
-                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
+                api_key = os.getenv('UNBELIEVABOAT_API_TOKEN')
 
                 await remove_money(guild_id, robber_user_id, penalty, api_key)
                 return
@@ -244,7 +244,7 @@ async def main():
             guild_id = str(interaction.guild_id)
             target_user_id = str(target.id)
             robber_user_id = str(interaction.user.id)
-            api_key = os.getenv('UNBELIEVABOAT_API_KEY')
+            api_key = os.getenv('UNBELIEVABOAT_API_TOKEN')
 
             target_balance = await get_user_balance(guild_id, target_user_id, api_key)
             if not target_balance or target_balance <= 0:
@@ -352,7 +352,7 @@ async def main():
 
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
-                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
+                api_key = os.getenv('UNBELIEVABOAT_API_TOKEN')
 
                 await remove_money(guild_id, robber_user_id, penalty, api_key)
 
@@ -438,7 +438,7 @@ async def main():
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
                 target_user_id = str(target.id)
-                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
+                api_key = os.getenv('UNBELIEVABOAT_API_TOKEN')
 
                 await remove_money(guild_id, robber_user_id, penalty1, api_key)
                 await remove_money(guild_id, target_user_id, penalty2, api_key)
@@ -457,7 +457,7 @@ async def main():
             guild_id = str(interaction.guild_id)
             target_user_id = str(target.id)
             robber_user_id = str(interaction.user.id)
-            api_key = os.getenv('UNBELIEVABOAT_API_KEY')
+            api_key = os.getenv('UNBELIEVABOAT_API_TOKEN')
 
             target_balance = await get_user_balance(guild_id, target_user_id, api_key)
             if not target_balance or target_balance <= 0:
