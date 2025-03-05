@@ -8,28 +8,45 @@ import os
 import random
 import requests
 from typing import Dict, List
+from config import load_config
 
 # Setup logging
 logger = setup_logging()
+
+# Load configuration
+config = load_config()
+UNBELIEVABOAT_API_KEY = config['UNBELIEVABOAT_API_KEY']
 
 # Store active fights and bets
 active_fights: Dict[int, Dict] = {}  # message_id -> fight info
 active_bets: Dict[int, List[Dict]] = {}  # message_id -> list of bets
 
-async def get_user_balance(guild_id, user_id, api_key):
+async def get_user_balance(guild_id, user_id, api_key=None):
+    if api_key is None:
+        api_key = UNBELIEVABOAT_API_KEY
+    
     url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
     headers = {
         "accept": "application/json",
         "Authorization": api_key
     }
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json().get('cash', None)
-    else:
-        logger.error(f"Error getting user balance: {response.text}")
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"Got balance for user {user_id}: {data}")
+            return data.get('cash', 0)  # Return 0 if 'cash' is not found
+        else:
+            logger.error(f"Error getting user balance: {response.text}")
+            return None
+    except Exception as e:
+        logger.error(f"Exception getting user balance: {str(e)}")
         return None
 
-async def update_money(guild_id, user_id, amount, api_key):
+async def update_money(guild_id, user_id, amount, api_key=None):
+    if api_key is None:
+        api_key = UNBELIEVABOAT_API_KEY
+        
     url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
     headers = {
         "accept": "application/json",
@@ -37,13 +54,19 @@ async def update_money(guild_id, user_id, amount, api_key):
         "Authorization": api_key
     }
     data = {
-        "cash": amount
+        "cash": amount  # For adding money: positive, for removing: negative
     }
-    response = requests.patch(url, headers=headers, json=data)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        logger.error(f"Error updating money: {response.text}")
+    try:
+        response = requests.patch(url, headers=headers, json=data)
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"Updated balance for user {user_id}, amount {amount}: {data}")
+            return data
+        else:
+            logger.error(f"Error updating money: {response.text}")
+            return None
+    except Exception as e:
+        logger.error(f"Exception updating money: {str(e)}")
         return None
 
 class BetModal(Modal):
@@ -53,8 +76,8 @@ class BetModal(Modal):
         self.fighter = fighter
         
         self.amount = TextInput(
-            label="Bet Amount",
-            placeholder="Enter amount to bet...",
+            label="Bet Amount (minimum: $1)",
+            placeholder="Enter amount to bet (minimum: $1)...",
             min_length=1,
             max_length=10,
             required=True
@@ -64,23 +87,28 @@ class BetModal(Modal):
     async def on_submit(self, interaction: discord.Interaction):
         try:
             amount = int(self.amount.value)
-            if amount <= 0:
-                await interaction.response.send_message("Bet amount must be positive!", ephemeral=True)
+            if amount < 1:
+                await interaction.response.send_message("Minimum bet amount is $1!", ephemeral=True)
                 return
                 
-            api_key = os.getenv('UNBELIEVABOAT_API_KEY')
             guild_id = str(interaction.guild_id)
             user_id = str(interaction.user.id)
             
             # Check user balance
-            balance = await get_user_balance(guild_id, user_id, api_key)
-            if balance is None or balance < amount:
-                await interaction.response.send_message("You don't have enough money for this bet!", ephemeral=True)
+            balance = await get_user_balance(guild_id, user_id)
+            if balance is None:
+                await interaction.response.send_message("Error checking balance. Please try again.", ephemeral=True)
                 return
                 
-            # Remove bet amount
-            if not await update_money(guild_id, user_id, -amount, api_key):
-                await interaction.response.send_message("Failed to process bet!", ephemeral=True)
+            logger.info(f"User {user_id} balance: ${balance:,}, trying to bet: ${amount:,}")
+            if balance < amount:
+                await interaction.response.send_message(f"You don't have enough money! Your balance: ${balance:,}", ephemeral=True)
+                return
+                
+            # Remove bet amount (use negative amount to remove money)
+            result = await update_money(guild_id, user_id, -amount)
+            if not result:
+                await interaction.response.send_message("Failed to process bet! Please try again.", ephemeral=True)
                 return
                 
             # Record bet
@@ -120,8 +148,7 @@ class FightButton(Button):
                 
             # Start the fight
             fight_info['accepted'] = True
-            for item in self.view.children:
-                item.disabled = True
+            self.disabled = True
             await interaction.message.edit(view=self.view)
             
             # Fight sequence
@@ -131,27 +158,16 @@ class FightButton(Button):
             await interaction.response.send_message(f"🥊 The fight between {challenger.mention} and {target.mention} begins!")
             
             # Fight mechanics
+            rounds = []
             challenger_hp = 100
             target_hp = 100
             
             moves = [
-                ("throws a devastating haymaker", "barely dodges the punch", "CONNECTS WITH BRUTAL FORCE!", 40),
-                ("goes for a flying knee", "blocks with their arms", "SMASHES INTO THEIR FACE!", 45),
-                ("attempts a spinning back kick", "tries to step away", "LANDS PERFECTLY ON THE JAW!", 50),
-                ("launches a brutal combo", "covers up defensively", "BREAKS THROUGH THE GUARD!", 35),
-                ("charges with a superman punch", "attempts to counter", "LANDS CLEAN!", 45),
-                ("goes for a takedown", "sprawls to defend", "SLAMS THEM TO THE GROUND!", 30),
-                ("attempts an elbow strike", "tries to parry", "SLICES THROUGH THEIR DEFENSE!", 40),
-                ("throws a liver shot", "tightens their core", "FINDS ITS MARK!", 45),
-                ("goes for a head kick", "ducks under", "CONNECTS WITH DEVASTATING IMPACT!", 55)
-            ]
-            
-            critical_hits = [
-                "💥 CRITICAL HIT! The strike hits a vital point!",
-                "💫 SUPER EFFECTIVE! That's going to leave a mark!",
-                "⚡ PERFECT TIMING! Couldn't have landed better!",
-                "🌟 DEVASTATING BLOW! The crowd goes wild!",
-                "💢 MASSIVE DAMAGE! That might be a fight-ender!"
+                ("throws a quick jab", "dodges the jab", "lands a solid hit", 10),
+                ("goes for an uppercut", "steps back", "connects with devastating force", 20),
+                ("attempts a roundhouse kick", "blocks the kick", "lands perfectly", 25),
+                ("tries a body shot", "guards their body", "hits the mark", 15),
+                ("launches a haymaker", "ducks under", "catches them off guard", 30)
             ]
             
             while challenger_hp > 0 and target_hp > 0:
@@ -160,44 +176,23 @@ class FightButton(Button):
                 # Randomly determine attacker and defender
                 if random.random() < 0.5:
                     attacker, defender = challenger, target
-                    hp_to_reduce = target_hp
+                    hp_to_reduce = 'target_hp'
                 else:
                     attacker, defender = target, challenger
-                    hp_to_reduce = challenger_hp
+                    hp_to_reduce = 'challenger_hp'
                 
                 # Pick a random move
-                move, dodge, hit, base_damage = random.choice(moves)
+                move, dodge, hit, damage = random.choice(moves)
                 
-                # 70% chance to hit, with possibility of critical hits
-                if random.random() < 0.7:
-                    # 20% chance for critical hit (1.5x damage)
-                    is_critical = random.random() < 0.2
-                    damage = round(base_damage * 1.5) if is_critical else base_damage
-                    
-                    if attacker == challenger:
-                        target_hp -= damage
-                    else:
-                        challenger_hp -= damage
-                    
-                    round_msg = f"💥 {attacker.mention} {move} and {hit} (-{damage} HP)"
-                    if is_critical:
-                        round_msg = f"{random.choice(critical_hits)}\n{round_msg}"
+                # 60% chance to hit
+                if random.random() < 0.6:
+                    locals()[hp_to_reduce] -= damage
+                    round_msg = f"💥 {attacker.mention} {move} and {hit}! (-{damage} HP)"
                 else:
                     round_msg = f"💨 {attacker.mention} {move} but {defender.mention} {dodge}!"
                 
-                # Ensure HP doesn't go below 0
-                challenger_hp = max(0, challenger_hp)
-                target_hp = max(0, target_hp)
-                
-                # Show HP bars
-                challenger_bar = "❤" * (challenger_hp // 10) + "🖤" * ((100 - challenger_hp) // 10)
-                target_bar = "❤" * (target_hp // 10) + "🖤" * ((100 - target_hp) // 10)
-                
-                await interaction.followup.send(
-                    f"{round_msg}\n\n"
-                    f"{challenger.display_name}: {challenger_hp}HP\n{challenger_bar}\n\n"
-                    f"{target.display_name}: {target_hp}HP\n{target_bar}"
-                )
+                rounds.append(round_msg)
+                await interaction.followup.send(f"{round_msg}\n{challenger.display_name}: {challenger_hp}HP | {target.display_name}: {target_hp}HP")
             
             # Determine winner
             winner = challenger if target_hp <= 0 else target
@@ -205,22 +200,19 @@ class FightButton(Button):
             
             # Process bets
             if message_id in active_bets:
-                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
+                api_key = UNBELIEVABOAT_API_KEY
                 guild_id = str(interaction.guild_id)
                 
                 for bet in active_bets[message_id]:
                     if bet['fighter'].id == winner.id:
                         # Winner gets double their bet
                         winnings = bet['amount'] * 2
-                        await update_money(guild_id, str(bet['user'].id), winnings, api_key)
+                        await update_money(guild_id, str(bet['user'].id), winnings)
                         await interaction.followup.send(f"💰 {bet['user'].mention} won ${winnings:,} from their bet!")
                 
                 del active_bets[message_id]
             
-            await interaction.followup.send(
-                f"🏆 {winner.mention} has won the fight against {loser.mention} in an epic battle!\n"
-                f"{'💀 It was a KNOCKOUT!' if abs(challenger_hp - target_hp) > 50 else '👊 What a close fight!'}"
-            )
+            await interaction.followup.send(f"🏆 {winner.mention} has won the fight against {loser.mention}!")
             del active_fights[message_id]
 
 class BetButton(Button):
@@ -244,7 +236,11 @@ class BetButton(Button):
             await interaction.response.send_message("This fight is no longer active!", ephemeral=True)
             return
             
-        # Allow betting before the fight is accepted
+        if not fight_info.get('accepted'):
+            await interaction.response.send_message("Wait for the fight to be accepted before placing bets!", ephemeral=True)
+            return
+            
+        # Show betting modal
         await interaction.response.send_modal(BetModal(self.message_id, self.fighter))
 
 class FightView(View):
@@ -283,7 +279,7 @@ async def setup_fight_commands(bot):
         # Send the challenge message
         response = await interaction.response.send_message(
             f"🥊 {interaction.user.mention} has challenged {target.mention} to a fight!\n"
-            f"Place your bets now! The challenged player has 3 minutes to accept!",
+            f"The challenged player has 3 minutes to accept!",
             view=view
         )
         
@@ -301,23 +297,8 @@ async def setup_fight_commands(bot):
         # Set up timeout to clean up if fight not accepted
         await asyncio.sleep(180)  # 3 minutes
         if message.id in active_fights and not active_fights[message.id]['accepted']:
-            # Return money to betters if fight wasn't accepted
-            if message.id in active_bets:
-                api_key = os.getenv('UNBELIEVABOAT_API_KEY')
-                guild_id = str(interaction.guild_id)
-                
-                for bet in active_bets[message.id]:
-                    # Return the bet amount
-                    await update_money(guild_id, str(bet['user'].id), bet['amount'], api_key)
-                    try:
-                        await interaction.followup.send(f"💰 Returning ${bet['amount']:,} to {bet['user'].mention} as the fight was not accepted.")
-                    except:
-                        pass
-                
-                del active_bets[message.id]
-            
             del active_fights[message.id]
             try:
-                await interaction.edit_original_response(content="⏰ Challenge has expired! All bets have been returned.", view=None)
+                await interaction.edit_original_response(content="⏰ Challenge has expired!", view=None)
             except:
                 pass  # Message might have been deleted
