@@ -7,7 +7,6 @@ import os
 from discord.ext import commands
 from config import load_config
 from utils import setup_logging
-#from api_client import UnbelievaBoatAPI # Removed as we are using our custom requests call
 from keep_alive import start_server
 import requests
 
@@ -22,7 +21,6 @@ class AutomationBot(commands.Bot):
         intents.guilds = True
         super().__init__(command_prefix="!", intents=intents)
         self.config = load_config()
-        #self.unbelievaboat = UnbelievaBoatAPI() # Removed as we are using our custom requests call
 
     async def setup_hook(self):
         logger.info("Bot is setting up...")
@@ -215,52 +213,50 @@ async def main():
                 await remove_money(guild_id, robber_user_id, penalty, api_key)
                 return
 
-            # Send initial response for normal robbery
-            await interaction.response.send_message(f"🔫 You're robbing {target.mention}!")
-
-            # Use UnbelievaBoat API to remove money with random amount between 25k-50k
+            # Get target's balance before robbing
             guild_id = str(interaction.guild_id)
             target_user_id = str(target.id)
             robber_user_id = str(interaction.user.id)
-            amount = random.randint(25000, 50000)
-
-            logger.info(f"Attempting to remove {amount} from user {target_user_id} in guild {guild_id}")
             api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
-            # Get target's balance before robbing
             target_balance = await get_user_balance(guild_id, target_user_id, api_key)
-            if target_balance:
-                # Check if robbery would put target below zero
-                if target_balance < amount:
-                    amount = target_balance  # Limit amount to target's balance
-                    logger.info(f"Limiting robbery amount to {amount} to prevent negative balance")
+            if not target_balance or target_balance <= 0:
+                await interaction.response.send_message(
+                    f"❌ {target.mention} is broke! No money to rob.",
+                    ephemeral=True
+                )
+                return
 
-                # Remove money from target
-                result = await remove_money(guild_id, target_user_id, amount, api_key)
+            # Calculate robbery amount (random between 25k-50k, but not exceeding target's balance)
+            amount = random.randint(25000, 50000)
+            if target_balance < amount:
+                amount = target_balance  # Limit amount to target's balance
+                logger.info(f"Limiting robbery amount to {amount} to prevent negative balance")
 
-                if result:
-                    target_new_balance = result.get('cash', 'unknown')
+            # Send initial response for normal robbery
+            await interaction.response.send_message(f"🔫 You're robbing {target.mention}!")
 
-                    # Add the stolen money to the robber
-                    logger.info(f"Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
-                    add_result = await add_money(guild_id, robber_user_id, amount, api_key)
+            # Remove money from target
+            result = await remove_money(guild_id, target_user_id, amount, api_key)
 
-                    if add_result:
-                        robber_new_balance = add_result.get('cash', 'unknown')
-                        await interaction.followup.send(
-                            f"💰 Successfully robbed ${amount:,} from {target.mention}!\n"
-                            f"Their new balance is ${target_new_balance:,}\n"
-                            f"Your new balance is ${robber_new_balance:,}"
-                        )
-                    else:
-                        await interaction.followup.send(
-                            f"💰 Successfully robbed ${amount:,} from {target.mention}, but failed to add it to your account.\n"
-                            f"Their new balance is ${target_new_balance:,}"
-                        )
+            if result:
+                target_new_balance = result.get('cash', 'unknown')
+
+                # Add the stolen money to the robber
+                logger.info(f"Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
+                add_result = await add_money(guild_id, robber_user_id, amount, api_key)
+
+                if add_result:
+                    robber_new_balance = add_result.get('cash', 'unknown')
+                    await interaction.followup.send(
+                        f"💰 Successfully robbed ${amount:,} from {target.mention}!\n"
+                        f"Their new balance is ${target_new_balance:,}\n"
+                        f"Your new balance is ${robber_new_balance:,}"
+                    )
                 else:
                     await interaction.followup.send(
-                        "❌ Failed to rob the target. They might be broke or protected!\n"
-                        "Make sure you have permissions to use economy commands."
+                        f"💰 Successfully robbed ${amount:,} from {target.mention}, but failed to add it to your account.\n"
+                        f"Their new balance is ${target_new_balance:,}"
                     )
             else:
                 await interaction.followup.send(
@@ -458,52 +454,50 @@ async def main():
 
                 return
 
-            # Normal plock robbery (smaller amount than woozie)
-            await interaction.response.send_message(f"🔫 You're robbing {target.mention} with your plock!")
-
-            # Use UnbelievaBoat API to remove money with random amount between 500-10k
+            # Get target's balance before robbing
             guild_id = str(interaction.guild_id)
             target_user_id = str(target.id)
             robber_user_id = str(interaction.user.id)
-            amount = random.randint(500, 10000)
-
-            logger.info(f"Plock robbery: Attempting to remove {amount} from user {target_user_id} in guild {guild_id}")
             api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
-            # Get target's balance before robbing
             target_balance = await get_user_balance(guild_id, target_user_id, api_key)
-            if target_balance:
-                # Check if robbery would put target below zero
-                if target_balance < amount:
-                    amount = target_balance  # Limit amount to target's balance
-                    logger.info(f"Limiting robbery amount to {amount} to prevent negative balance")
+            if not target_balance or target_balance <= 0:
+                await interaction.response.send_message(
+                    f"❌ {target.mention} is broke! No money to rob.",
+                    ephemeral=True
+                )
+                return
 
-                # Remove money from target
-                result = await remove_money(guild_id, target_user_id, amount, api_key)
+            # Calculate robbery amount (random between 500-10k, but not exceeding target's balance)
+            amount = random.randint(500, 10000)
+            if target_balance < amount:
+                amount = target_balance  # Limit amount to target's balance
+                logger.info(f"Limiting robbery amount to {amount} to prevent negative balance")
 
-                if result:
-                    target_new_balance = result.get('cash', 'unknown')
+            # Normal plock robbery (smaller amount than woozie)
+            await interaction.response.send_message(f"🔫 You're robbing {target.mention} with your plock!")
 
-                    # Add the stolen money to the robber
-                    logger.info(f"Plock robbery: Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
-                    add_result = await add_money(guild_id, robber_user_id, amount, api_key)
+            # Remove money from target
+            result = await remove_money(guild_id, target_user_id, amount, api_key)
 
-                    if add_result:
-                        robber_new_balance = add_result.get('cash', 'unknown')
-                        await interaction.followup.send(
-                            f"💰 Successfully robbed ${amount:,} from {target.mention}!\n"
-                            f"Their new balance is ${target_new_balance:,}\n"
-                            f"Your new balance is ${robber_new_balance:,}"
-                        )
-                    else:
-                        await interaction.followup.send(
-                            f"💰 Successfully robbed ${amount:,} from {target.mention}, but failed to add it to your account.\n"
-                            f"Their new balance is ${target_new_balance:,}"
-                        )
+            if result:
+                target_new_balance = result.get('cash', 'unknown')
+
+                # Add the stolen money to the robber
+                logger.info(f"Plock robbery: Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
+                add_result = await add_money(guild_id, robber_user_id, amount, api_key)
+
+                if add_result:
+                    robber_new_balance = add_result.get('cash', 'unknown')
+                    await interaction.followup.send(
+                        f"💰 Successfully robbed ${amount:,} from {target.mention}!\n"
+                        f"Their new balance is ${target_new_balance:,}\n"
+                        f"Your new balance is ${robber_new_balance:,}"
+                    )
                 else:
                     await interaction.followup.send(
-                        "❌ Failed to rob the target. They might be broke or protected!\n"
-                        "Make sure you have permissions to use economy commands."
+                        f"💰 Successfully robbed ${amount:,} from {target.mention}, but failed to add it to your account.\n"
+                        f"Their new balance is ${target_new_balance:,}"
                     )
             else:
                 await interaction.followup.send(
