@@ -112,3 +112,49 @@ class UnbelievaBoatAPI:
         except Exception as e:
             logger.error(f"Unexpected error in add_money API call: {str(e)}")
             return None
+            
+    async def get_balance(self, guild_id: str, user_id: str) -> Optional[int]:
+        """
+        Get a user's balance using UnbelievaBoat API
+
+        Args:
+            guild_id (str): Discord guild ID
+            user_id (str): Discord user ID
+
+        Returns:
+            Optional[int]: User's cash balance or None if failed
+        """
+        try:
+            endpoint = f"{self.BASE_URL}/{self.API_VERSION}/guilds/{guild_id}/users/{user_id}"
+
+            logger.info(f"Making API request to endpoint: {endpoint}")
+            logger.info(f"Getting balance for user {user_id} in guild {guild_id}")
+
+            async with aiohttp.ClientSession(headers=self.headers) as session:
+                async with session.get(endpoint) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        balance = data.get('cash', 0)
+                        logger.info(f"Successfully got balance for user {user_id}: {balance}")
+                        return balance
+                    elif response.status == 429:  # Rate limit
+                        retry_after = response.headers.get('Retry-After', 60)
+                        logger.warning(f"Rate limited. Retry after {retry_after} seconds")
+                        return None
+                    elif response.status == 401:
+                        logger.error("Unauthorized. Please check your API token")
+                        return None
+                    elif response.status == 403:
+                        logger.error("Forbidden. Bot lacks necessary permissions")
+                        return None
+                    else:
+                        error_data = await response.text()
+                        logger.error(f"API request failed with status {response.status}: {error_data}")
+                        return None
+
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error in get_balance API call: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error in get_balance API call: {str(e)}")
+            return None
