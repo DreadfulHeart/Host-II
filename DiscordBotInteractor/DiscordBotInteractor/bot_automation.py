@@ -204,31 +204,45 @@ async def main():
 
             logger.info(f"Attempting to remove {amount} from user {target_user_id} in guild {guild_id}")
 
-            # Remove money from target
-            result = await bot.unbelievaboat.remove_money(guild_id, target_user_id, amount)
+            # **Get target's current balance**
+            target_balance_result = await bot.unbelievaboat.get_balance(guild_id, target_user_id)
+            if target_balance_result:
+                target_balance = target_balance_result.get('cash', 'unknown')
 
-            if result:
-                target_new_balance = result.get('cash', 'unknown')
+                # **Limit the robbery amount if it would go below zero**
+                if target_balance < amount:
+                    amount = target_balance
 
-                # Add the stolen money to the robber
-                logger.info(f"Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
-                add_result = await bot.unbelievaboat.add_money(guild_id, robber_user_id, amount)
+                # Remove money from target
+                result = await bot.unbelievaboat.remove_money(guild_id, target_user_id, amount)
 
-                if add_result:
-                    robber_new_balance = add_result.get('cash', 'unknown')
-                    await interaction.followup.send(
-                        f"💰 Successfully robbed ${amount:,} from {target.mention}!\n"
-                        f"Their new balance is ${target_new_balance:,}\n"
-                        f"Your new balance is ${robber_new_balance:,}"
-                    )
+                if result:
+                    target_new_balance = result.get('cash', 'unknown')
+
+                    # Add the stolen money to the robber
+                    logger.info(f"Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
+                    add_result = await bot.unbelievaboat.add_money(guild_id, robber_user_id, amount)
+
+                    if add_result:
+                        robber_new_balance = add_result.get('cash', 'unknown')
+                        await interaction.followup.send(
+                            f"💰 Successfully robbed ${amount:,} from {target.mention}!\n"
+                            f"Their new balance is ${target_new_balance:,}\n"
+                            f"Your new balance is ${robber_new_balance:,}"
+                        )
+                    else:
+                        await interaction.followup.send(
+                            f"💰 Successfully robbed ${amount:,} from {target.mention}, but failed to add it to your account.\n"
+                            f"Their new balance is ${target_new_balance:,}"
+                        )
                 else:
                     await interaction.followup.send(
-                        f"💰 Successfully robbed ${amount:,} from {target.mention}, but failed to add it to your account.\n"
-                        f"Their new balance is ${target_new_balance:,}"
+                        "❌ Failed to rob the target. They might be broke or protected!\n"
+                        "Make sure you have permissions to use economy commands."
                     )
             else:
                 await interaction.followup.send(
-                    "❌ Failed to rob the target. They might be broke or protected!\n"
+                    "❌ Failed to get the target's balance. They might be broke or protected!\n"
                     "Make sure you have permissions to use economy commands."
                 )
 
@@ -436,31 +450,45 @@ async def main():
 
             logger.info(f"Plock robbery: Attempting to remove {amount} from user {target_user_id} in guild {guild_id}")
 
-            # Remove money from target
-            result = await bot.unbelievaboat.remove_money(guild_id, target_user_id, amount)
+            # **Get target's current balance**
+            target_balance_result = await bot.unbelievaboat.get_balance(guild_id, target_user_id)
+            if target_balance_result:
+                target_balance = target_balance_result.get('cash', 'unknown')
 
-            if result:
-                target_new_balance = result.get('cash', 'unknown')
+                # **Limit the robbery amount if it would go below zero**
+                if target_balance < amount:
+                    amount = target_balance
 
-                # Add the stolen money to the robber
-                logger.info(f"Plock robbery: Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
-                add_result = await bot.unbelievaboat.add_money(guild_id, robber_user_id, amount)
+                # Remove money from target
+                result = await bot.unbelievaboat.remove_money(guild_id, target_user_id, amount)
 
-                if add_result:
-                    robber_new_balance = add_result.get('cash', 'unknown')
-                    await interaction.followup.send(
-                        f"💰 Successfully robbed ${amount:,} from {target.mention}!\n"
-                        f"Their new balance is ${target_new_balance:,}\n"
-                        f"Your new balance is ${robber_new_balance:,}"
-                    )
+                if result:
+                    target_new_balance = result.get('cash', 'unknown')
+
+                    # Add the stolen money to the robber
+                    logger.info(f"Plock robbery: Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
+                    add_result = await bot.unbelievaboat.add_money(guild_id, robber_user_id, amount)
+
+                    if add_result:
+                        robber_new_balance = add_result.get('cash', 'unknown')
+                        await interaction.followup.send(
+                            f"💰 Successfully robbed ${amount:,} from {target.mention}!\n"
+                            f"Their new balance is ${target_new_balance:,}\n"
+                            f"Your new balance is ${robber_new_balance:,}"
+                        )
+                    else:
+                        await interaction.followup.send(
+                            f"💰 Successfully robbed ${amount:,} from {target.mention}, but failed to add it to your account.\n"
+                            f"Their new balance is ${target_new_balance:,}"
+                        )
                 else:
                     await interaction.followup.send(
-                        f"💰 Successfully robbed ${amount:,} from {target.mention}, but failed to add it to your account.\n"
-                        f"Their new balance is ${target_new_balance:,}"
+                        "❌ Failed to rob the target. They might be broke or protected!\n"
+                        "Make sure you have permissions to use economy commands."
                     )
             else:
                 await interaction.followup.send(
-                    "❌ Failed to rob the target. They might be broke or protected!\n"
+                    "❌ Failed to get the target's balance. They might be broke or protected!\n"
                     "Make sure you have permissions to use economy commands."
                 )
 
