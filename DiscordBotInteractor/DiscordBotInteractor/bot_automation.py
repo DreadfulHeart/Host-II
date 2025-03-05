@@ -616,13 +616,26 @@ async def run_web_server():
     logger.info(f"Web server started on port {port}")
 
 async def start_everything():
-    await asyncio.gather(
-        run_web_server(),
-        main()
-    )
+    try:
+        # Start both the web server and the bot
+        await asyncio.gather(
+            run_web_server(),
+            main()
+        )
+    except Exception as e:
+        logger.error(f"Critical error in start_everything: {str(e)}", exc_info=True)
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error traceback:", exc_info=True)
+        raise  # Re-raise to ensure the process exits with error
 
 if __name__ == "__main__":
-    start_server()
-    logger.info("Started Python HTTP server for UptimeRobot")
-    logger.info("Starting Discord bot")
-    asyncio.run(start_everything())
+    try:
+        start_server()
+        logger.info("Started Python HTTP server for UptimeRobot")
+        logger.info("Starting Discord bot")
+        asyncio.run(start_everything())
+    except Exception as e:
+        logger.critical(f"Fatal error during startup: {str(e)}", exc_info=True)
+        logger.critical(f"Error type: {type(e).__name__}")
+        logger.critical(f"Stack trace:", exc_info=True)
+        raise  # Ensure the process exits with error status
