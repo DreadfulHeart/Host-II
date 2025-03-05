@@ -9,6 +9,7 @@ from config import load_config
 from utils import setup_logging
 from keep_alive import start_server
 import requests
+from fist_fight import setup_fight_commands
 
 # Setup logging
 logger = setup_logging()
@@ -70,6 +71,7 @@ class AutomationBot(commands.Bot):
 
     async def setup_hook(self):
         logger.info("Bot is setting up...")
+        await setup_fight_commands(self)
         await self.tree.sync()
 
     async def on_ready(self):
@@ -339,7 +341,7 @@ async def main():
 
                 uzi_options = [
                     [f"💥 UZI fires!", f"💢 You're hit! (-${penalty:,})"],
-                    [f"💥 \"ALL I SEE IS GREEN!!!\" {target.display_name} yells, firing their UZI!", f"💢 Multiple hits! (-${penalty:,})"],
+                    [f"💥 \"ALL I SEE IS GREEN!!!\" Someone nearby yells!", f"💢 Multiple hits! (-${penalty:,})"],
                     [f"💥 UZI wins!", f"💢 You're wounded! (-${penalty:,})"]
                 ]
                 uzi_messages = random.choice(uzi_options)
