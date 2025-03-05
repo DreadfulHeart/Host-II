@@ -13,6 +13,52 @@ import requests
 # Setup logging
 logger = setup_logging()
 
+# Define your functions here
+async def get_user_balance(guild_id, user_id, api_key):
+    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+    headers = {
+        "accept": "application/json",
+        "Authorization": api_key
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json().get('cash', None)
+    else:
+        logger.error(f"Error getting user balance: {response.text}")
+        return None
+async def remove_money(guild_id, user_id, amount, api_key):
+    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "Authorization": api_key
+    }
+    data = {
+        "cash": -amount
+    }
+    response = requests.patch(url, headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logger.error(f"Error removing money: {response.text}")
+        return None
+
+async def add_money(guild_id, user_id, amount, api_key):
+    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "Authorization": api_key
+    }
+    data = {
+        "cash": amount
+    }
+    response = requests.patch(url, headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logger.error(f"Error adding money: {response.text}")
+        return None
 class AutomationBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -28,7 +74,6 @@ class AutomationBot(commands.Bot):
 
     async def on_ready(self):
         logger.info(f"Logged in as {self.user}")
-
 async def main():
     bot = AutomationBot()
 
@@ -65,7 +110,8 @@ async def main():
                 interaction.guild.roles
             )
 
-            # Debug log to help troubleshoot
+            woozie_role = discord.utils.get(interaction.guild.roles, name="Woozie")
+
             logger.info(f"Checking if {target.display_name} has shotgun/woozie roles")
             if shotgun_role:
                 logger.info(f"Found shotgun role: {shotgun_role.name}")
@@ -73,21 +119,15 @@ async def main():
             else:
                 logger.info(f"No shotgun role found in the server")
 
-            # Priority check: if target has Woozie role, always trigger the gunfight scenario
-            # regardless of whether they have a shotgun role
             if woozie_role in target.roles:
-                # Both have Woozie role, gunfight happens
                 logger.info(f"Gunfight scenario: both {interaction.user.display_name} and {target.display_name} have Woozie role")
-
                 penalty1 = random.randint(5000, 15000)
                 penalty2 = random.randint(5000, 15000)
 
-                # Initial response
                 await interaction.response.send_message(
                     f"🔫 You try to rob {target.mention}, but they pull out their piece too!"
                 )
 
-                # Dramatic gunfight sequence - randomize some options
                 gunfight_options = [
                     [
                         f"💥 **BANG!** {interaction.user.display_name} fires first but misses!",
@@ -110,38 +150,31 @@ async def main():
                 ]
                 gunfight_messages = random.choice(gunfight_options)
 
-                # Send each message with a delay for dramatic effect
                 for i, message in enumerate(gunfight_messages):
-                    if i == 0:  # First message is already sent
+                    if i == 0:
                         await asyncio.sleep(1.5)
                     else:
                         await asyncio.sleep(1.5)
                         await interaction.followup.send(message)
 
-                # Randomly determine if one person gets a positive gain (5% chance)
                 positive_gain_chance = random.randint(1, 100)
                 gain_amount = 0
 
                 if positive_gain_chance <= 5:
-                    # Choose a random participant to get a positive gain
                     gain_participant = random.choice([interaction.user, target])
-
                     if gain_participant == interaction.user:
-                        gain_amount = round(penalty1 * 0.20)  # 20% positive gain
-                        penalty1 = 0  # Set penalty to 0 for the gain participant
+                        gain_amount = round(penalty1 * 0.20)
+                        penalty1 = 0
                     else:
-                        gain_amount = round(penalty2 * 0.20)  # 20% positive gain
-                        penalty2 = 0  # Set penalty to 0 for the gain participant
+                        gain_amount = round(penalty2 * 0.20)
+                        penalty2 = 0
 
-                # Remove money from both participants
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
                 target_user_id = str(target.id)
                 api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
-                # Remove from robber
                 await remove_money(guild_id, robber_user_id, penalty1, api_key)
-                # Remove from target
                 await remove_money(guild_id, target_user_id, penalty2, api_key)
 
                 if gain_amount > 0:
@@ -165,19 +198,14 @@ async def main():
                     )
 
                 return
-
-            # If target only has shotgun role (no Woozie role), trigger the shotgun defense scenario
             elif shotgun_role and shotgun_role in target.roles:
-                # Target has shotgun role, they defend themselves - attacker loses money
                 penalty = random.randint(10000, 15000)
                 logger.info(f"{target.display_name} has shotgun role, preventing robbery and penalizing robber {penalty}")
 
-                # Initial response
                 await interaction.response.send_message(
                     f"🔫 You try to rob {target.mention}, but wait... what's that they're reaching for?"
                 )
 
-                # Dramatic shotgun defense sequence - randomize some options
                 shotgun_options = [
                     [
                         f"💥 **BOOM!** {target.display_name} pulls out a shotgun!",
@@ -200,12 +228,10 @@ async def main():
                 ]
                 shotgun_messages = random.choice(shotgun_options)
 
-                # Send each message with a delay for dramatic effect
                 for message in shotgun_messages:
                     await asyncio.sleep(1.5)
                     await interaction.followup.send(message)
 
-                # Remove penalty money from robber
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
                 api_key = os.getenv('UNBELIEVABOAT_API_KEY')
@@ -213,7 +239,6 @@ async def main():
                 await remove_money(guild_id, robber_user_id, penalty, api_key)
                 return
 
-            # Get target's balance before robbing
             guild_id = str(interaction.guild_id)
             target_user_id = str(target.id)
             robber_user_id = str(interaction.user.id)
@@ -227,22 +252,18 @@ async def main():
                 )
                 return
 
-            # Calculate robbery amount (random between 25k-50k, but not exceeding target's balance)
             amount = random.randint(25000, 50000)
             if target_balance < amount:
-                amount = target_balance  # Limit amount to target's balance
+                amount = target_balance
                 logger.info(f"Limiting robbery amount to {amount} to prevent negative balance")
 
-            # Send initial response for normal robbery
             await interaction.response.send_message(f"🔫 You're robbing {target.mention}!")
 
-            # Remove money from target
             result = await remove_money(guild_id, target_user_id, amount, api_key)
 
             if result:
                 target_new_balance = result.get('cash', 'unknown')
 
-                # Add the stolen money to the robber
                 logger.info(f"Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
                 add_result = await add_money(guild_id, robber_user_id, amount, api_key)
 
@@ -266,20 +287,16 @@ async def main():
 
         except Exception as e:
             logger.error(f"Error in gunpoint command: {str(e)}")
-            # Do not send error messages to Discord chat anymore
-            # await interaction.followup.send("❌ An unexpected error occurred while trying to rob the target.")
 
     @bot.tree.command(name="plock", description="Rob someone with a pistol (requires Glock role)")
     @app_commands.describe(target="The user to rob (optional, random if not specified)")
     async def plock(interaction: discord.Interaction, target: discord.Member = None):
         try:
-            # Check if user has the Glock role
             glock_role = discord.utils.get(interaction.guild.roles, name="Glock")
             if not glock_role or glock_role not in interaction.user.roles:
                 await interaction.response.send_message("❌ You need the Glock role to use this command!", ephemeral=True)
                 return
 
-            # If no target specified, randomly select one
             if not target:
                 members = interaction.guild.members
                 valid_targets = [member for member in members if not member.bot and member != interaction.user]
@@ -296,7 +313,6 @@ async def main():
                 await interaction.response.send_message("❌ You can't rob a bot!", ephemeral=True)
                 return
 
-            # Check for roles
             shotgun_role = discord.utils.find(
                 lambda r: r.name.lower() == "shotgun",
                 interaction.guild.roles
@@ -308,16 +324,12 @@ async def main():
                 interaction.guild.roles
             )
 
-            # Debug log to help troubleshoot
             logger.info(f"Plock command: Checking if {target.display_name} has shotgun/woozie/uzi/plock roles")
 
-            # Check if target has Uzi role
             if uzi_role and uzi_role in target.roles:
-                # Target has Uzi, they overpower the plock user
                 penalty = random.randint(5000, 10000)
                 logger.info(f"{target.display_name} has Uzi role, overpowering plock user with penalty {penalty}")
 
-                # Random uzi intro messages
                 uzi_intros = [
                     f"🔫 Your plock is no match for {target.mention}'s UZI!",
                     f"🔫 {target.mention} pulls out an UZI when you show your plock!",
@@ -325,7 +337,6 @@ async def main():
                 ]
                 await interaction.response.send_message(random.choice(uzi_intros))
 
-                # Simplified uzi defense options
                 uzi_options = [
                     [f"💥 UZI fires!", f"💢 You're hit! (-${penalty:,})"],
                     [f"💥 \"ALL I SEE IS GREEN!!!\" {target.display_name} yells, firing their UZI!", f"💢 Multiple hits! (-${penalty:,})"],
@@ -337,7 +348,6 @@ async def main():
                     await asyncio.sleep(1.5)
                     await interaction.followup.send(message)
 
-                # Remove penalty money from robber
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
                 api_key = os.getenv('UNBELIEVABOAT_API_KEY')
@@ -346,16 +356,13 @@ async def main():
 
                 return
 
-            # Check if target has Shotgun role
             elif shotgun_role and shotgun_role in target.roles:
-                # Target has shotgun role, scares away the plock user
                 logger.info(f"{target.display_name} has shotgun role, scaring away plock user")
 
                 await interaction.response.send_message(
                     f"🔫 You pull out your pistol to rob {target.mention}, but freeze when you see their shotgun!"
                 )
 
-                # Dramatic shotgun scare sequence - randomize some options
                 shotgun_options = [
                     [
                         f"💥 **CLICK!** {target.display_name} cocks their shotgun!",
@@ -387,21 +394,16 @@ async def main():
                 )
 
                 return
-
-            # Check if target also has Glock role (pistol vs pistol)
             elif glock_role in target.roles:
-                # Both have Glock role, smaller gunfight happens
                 logger.info(f"Pistol standoff: both {interaction.user.display_name} and {target.display_name} have Glock role")
 
                 penalty1 = random.randint(1000, 5000)
                 penalty2 = random.randint(1000, 5000)
 
-                # Initial response
                 await interaction.response.send_message(
                     f"🔫 You pull your pistol on {target.mention}, but they draw their pistol too!"
                 )
 
-                # Pistol standoff sequence - randomize some options
                 standoff_options = [
                     [
                         f"🔫 You're both pointing plocks at each other!",
@@ -424,23 +426,19 @@ async def main():
                 ]
                 standoff_messages = random.choice(standoff_options)
 
-                # Send each message with a delay
                 for i, message in enumerate(standoff_messages):
-                    if i == 0:  # First message is already sent
+                    if i == 0:
                         await asyncio.sleep(1.5)
                     else:
                         await asyncio.sleep(1.5)
                         await interaction.followup.send(message)
 
-                # Remove money from both participants
                 guild_id = str(interaction.guild_id)
                 robber_user_id = str(interaction.user.id)
                 target_user_id = str(target.id)
                 api_key = os.getenv('UNBELIEVABOAT_API_KEY')
 
-                # Remove from robber
                 await remove_money(guild_id, robber_user_id, penalty1, api_key)
-                # Remove from target
                 await remove_money(guild_id, target_user_id, penalty2, api_key)
 
                 if result1 and result2:
@@ -454,7 +452,6 @@ async def main():
 
                 return
 
-            # Get target's balance before robbing
             guild_id = str(interaction.guild_id)
             target_user_id = str(target.id)
             robber_user_id = str(interaction.user.id)
@@ -468,22 +465,18 @@ async def main():
                 )
                 return
 
-            # Calculate robbery amount (random between 500-10k, but not exceeding target's balance)
             amount = random.randint(500, 10000)
             if target_balance < amount:
-                amount = target_balance  # Limit amount to target's balance
+                amount = target_balance
                 logger.info(f"Limiting robbery amount to {amount} to prevent negative balance")
 
-            # Normal plock robbery (smaller amount than woozie)
             await interaction.response.send_message(f"🔫 You're robbing {target.mention} with your plock!")
 
-            # Remove money from target
             result = await remove_money(guild_id, target_user_id, amount, api_key)
 
             if result:
                 target_new_balance = result.get('cash', 'unknown')
 
-                # Add the stolen money to the robber
                 logger.info(f"Plock robbery: Attempting to add {amount} to user {robber_user_id} in guild {guild_id}")
                 add_result = await add_money(guild_id, robber_user_id, amount, api_key)
 
@@ -507,14 +500,11 @@ async def main():
 
         except Exception as e:
             logger.error(f"Error in plock command: {str(e)}")
-            # Do not send error messages to Discord chat anymore
-            # await interaction.followup.send("❌ An unexpected error occurred while trying to rob the target.")
 
     @bot.tree.command(name="geturl", description="Get the bot's Replit URL for uptime monitoring (Admin only)")
     @app_commands.check(lambda interaction: interaction.user.guild_permissions.administrator)
     async def geturl(interaction: discord.Interaction):
         try:
-            # Check if user is an administrator
             if not interaction.user.guild_permissions.administrator:
                 await interaction.response.send_message("❌ You need administrator permissions to use this command!", ephemeral=True)
                 return
@@ -522,8 +512,7 @@ async def main():
             repl_slug = os.getenv('REPL_SLUG', 'unknown')
             repl_owner = os.getenv('REPL_OWNER', 'unknown')
 
-            if repl_slug != 'unknown' and repl_owner != 'unknown':
-                # For Replit deployments
+            if repl_slug != 'unknown' and repl_owner != 'unknown'):
                 deployment_url = f"https://{repl_slug}-{repl_owner}.replit.app"
 
                 await interaction.response.send_message(
@@ -550,7 +539,6 @@ async def main():
                 "❌ An error occurred while getting the URL.",
                 ephemeral=True
             )
-
     try:
         async with bot:
             await bot.start(bot.config['TOKEN'])
@@ -558,57 +546,8 @@ async def main():
         logger.error(f"Failed to start bot: {str(e)}")
 
 if __name__ == "__main__":
-    # Start Python HTTP server for UptimeRobot in a background thread
     start_server()
     logger.info("Started Python HTTP server for UptimeRobot")
 
-    # Run the Discord bot
     logger.info("Starting Discord bot")
     asyncio.run(main())
-
-async def get_user_balance(guild_id, user_id, api_key):
-    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-    headers = {
-        "accept": "application/json",
-        "Authorization": api_key
-    }
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json().get('cash', None)
-    else:
-        logger.error(f"Error getting user balance: {response.text}")
-        return None
-
-async def remove_money(guild_id, user_id, amount, api_key):
-    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "Authorization": api_key
-    }
-    data = {
-        "cash": -amount
-    }
-    response = requests.patch(url, headers=headers, json=data)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        logger.error(f"Error removing money: {response.text}")
-        return None
-
-async def add_money(guild_id, user_id, amount, api_key):
-    url = f"https://unbelievaboat.com/api/v1/guilds/{guild_id}/users/{user_id}"
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "Authorization": api_key
-    }
-    data = {
-        "cash": amount
-    }
-    response = requests.patch(url, headers=headers, json=data)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        logger.error(f"Error adding money: {response.text}")
-        return None
