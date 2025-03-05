@@ -512,7 +512,7 @@ async def main():
             repl_slug = os.getenv('REPL_SLUG', 'unknown')
             repl_owner = os.getenv('REPL_OWNER', 'unknown')
 
-            if repl_slug != 'unknown' and repl_owner != 'unknown'):
+            if repl_slug != 'unknown' and repl_owner != 'unknown':
                 deployment_url = f"https://{repl_slug}-{repl_owner}.replit.app"
 
                 await interaction.response.send_message(
