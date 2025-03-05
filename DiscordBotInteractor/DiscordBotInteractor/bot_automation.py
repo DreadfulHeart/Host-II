@@ -248,7 +248,7 @@ async def main():
 
         except Exception as e:
             logger.error(f"Error in gunpoint command: {str(e)}")
-            await interaction.followup.send("❌ An unexpected error occurred while trying to rob the target.")
+            await interaction.followup.send("❌ You tried to rob them, but they're broke!")
 
     @bot.tree.command(name="plock", description="Rob someone with a pistol (requires Glock role)")
     @app_commands.describe(target="The user to rob (optional, random if not specified)")
