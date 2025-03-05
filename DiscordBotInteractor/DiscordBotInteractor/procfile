@@ -1,1 +1,1 @@
-web: python bot_automation.py
+web: python3 bot_automation.py
