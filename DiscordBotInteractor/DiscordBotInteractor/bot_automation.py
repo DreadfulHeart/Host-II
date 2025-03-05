@@ -279,7 +279,8 @@ async def main():
 
         except Exception as e:
             logger.error(f"Error in gunpoint command: {str(e)}")
-            await interaction.followup.send("❌ An unexpected error occurred while trying to rob the target.")
+            # Do not send error messages to Discord chat anymore
+            # await interaction.followup.send("❌ An unexpected error occurred while trying to rob the target.")
 
     @bot.tree.command(name="plock", description="Rob someone with a pistol (requires Glock role)")
     @app_commands.describe(target="The user to rob (optional, random if not specified)")
@@ -524,7 +525,8 @@ async def main():
 
         except Exception as e:
             logger.error(f"Error in plock command: {str(e)}")
-            await interaction.followup.send("❌ An unexpected error occurred while trying to rob the target.")
+            # Do not send error messages to Discord chat anymore
+            # await interaction.followup.send("❌ An unexpected error occurred while trying to rob the target.")
 
     @bot.tree.command(name="geturl", description="Get the bot's Replit URL for uptime monitoring (Admin only)")
     @app_commands.check(lambda interaction: interaction.user.guild_permissions.administrator)
