@@ -179,6 +179,19 @@ class AutomationBot(commands.Bot):
 
     async def on_ready(self):
         logger.info(f"Logged in as {self.user}")
+
+    async def emergency_shutdown(self):
+        """Emergency shutdown of the bot"""
+        try:
+            # Close all connections and cleanup
+            await self.close()
+            # Force exit the process
+            os._exit(0)
+        except Exception as e:
+            logger.critical(f"Error during emergency shutdown: {e}")
+            # If normal shutdown fails, force quit
+            os._exit(1)
+
 async def main():
     bot = AutomationBot()
 
@@ -605,6 +618,19 @@ async def main():
 
         except Exception as e:
             logger.error(f"Error in plock command: {str(e)}")
+
+    @bot.tree.command(name="sleep", description="⚠️ Emergency shutdown of the entire bot (Admin only)")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def sleep(interaction: discord.Interaction):
+        """Emergency shutdown command that immediately stops all bot operations"""
+        try:
+            await interaction.response.send_message("🛑 EMERGENCY SHUTDOWN INITIATED", ephemeral=True)
+            logger.warning(f"Emergency shutdown triggered by {interaction.user.name} ({interaction.user.id})")
+            # Immediate shutdown
+            await bot.emergency_shutdown()
+        except Exception as e:
+            logger.critical(f"Failed to execute emergency shutdown: {e}")
+            os._exit(1)  # Force quit if normal shutdown fails
 
     try:
         async with bot:
