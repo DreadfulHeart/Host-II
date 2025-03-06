@@ -21,9 +21,11 @@ api_client = UnbelievaBoatAPI()
 active_fights: Dict[int, Dict] = {}  # message_id -> fight info
 active_bets: Dict[int, List[Dict]] = {}  # message_id -> list of bets
 
-def get_hearts_display(current_hearts: int, max_hearts: int = 3) -> str:
-    """Return a string of hearts with red for current and black for lost"""
-    return "❤️" * current_hearts + "🖤" * (max_hearts - current_hearts)
+def get_hearts_display(current_hp: int, max_hp: int = 100) -> str:
+    """Return a string of hearts based on percentage of health remaining"""
+    heart_count = 6  # Total hearts to show
+    hearts_remaining = round((current_hp / max_hp) * heart_count)
+    return "❤️" * hearts_remaining + "🖤" * (heart_count - hearts_remaining)
 
 async def get_user_balance(guild_id: str, user_id: str) -> Optional[int]:
     """Get user balance using UnbelievaBoat API"""
@@ -128,15 +130,13 @@ class FightButton(Button):
             rounds = []
             challenger_hp = 100
             target_hp = 100
-            challenger_hearts = 3
-            target_hearts = 3
             
             moves = [
-                ("throws a quick jab", "dodges the jab", "lands a solid hit", 15, "💫"),
-                ("goes for an uppercut", "steps back", "connects with devastating force", 25, "💥"),
-                ("attempts a roundhouse kick", "blocks the kick", "lands perfectly", 30, "🦶"),
-                ("tries a body shot", "guards their body", "hits the mark", 20, "👊"),
-                ("launches a haymaker", "ducks under", "catches them off guard", 35, "⚡")
+                ("throws a quick jab", "dodges the jab", "lands a solid hit", 25, "💫"),
+                ("goes for an uppercut", "steps back", "connects with devastating force", 35, "💥"),
+                ("attempts a roundhouse kick", "blocks the kick", "lands perfectly", 40, "🦶"),
+                ("tries a body shot", "guards their body", "hits the mark", 30, "👊"),
+                ("launches a haymaker", "ducks under", "catches them off guard", 45, "⚡")
             ]
             
             # Special moves that can only be used once per fighter
@@ -145,24 +145,21 @@ class FightButton(Button):
                 target.id: True
             }
             
-            while (challenger_hearts > 0 and target_hearts > 0):
+            while challenger_hp > 0 and target_hp > 0:
                 await asyncio.sleep(3)  # Delay between rounds
                 
                 # Randomly determine attacker and defender
                 if random.random() < 0.5:
                     attacker, defender = challenger, target
                     hp_to_reduce = 'target_hp'
-                    hearts_to_check = 'target_hearts'
                 else:
                     attacker, defender = target, challenger
                     hp_to_reduce = 'challenger_hp'
-                    hearts_to_check = 'challenger_hearts'
                 
                 # 15% chance for special move if available
                 if random.random() < 0.15 and special_moves[attacker.id]:
                     special_moves[attacker.id] = False  # Use up special move
-                    damage = random.randint(40, 50)  # Special move does big damage
-                    # Directly modify the HP
+                    damage = random.randint(50, 60)  # Special move does big damage
                     if hp_to_reduce == 'target_hp':
                         target_hp -= damage
                     else:
@@ -180,7 +177,6 @@ class FightButton(Button):
                             hit = "CRITICAL HIT! " + hit
                             emoji = "🌟"
                         
-                        # Directly modify the HP
                         if hp_to_reduce == 'target_hp':
                             target_hp -= damage
                         else:
@@ -189,58 +185,42 @@ class FightButton(Button):
                     else:
                         round_msg = f"💨 {attacker.mention} {move} but {defender.mention} {dodge}!"
                 
-                # Check for heart loss (every 50 damage = lose a heart)
-                current_hp = target_hp if hp_to_reduce == 'target_hp' else challenger_hp
-                if current_hp <= 0:
-                    if hp_to_reduce == 'target_hp':
-                        target_hearts -= 1
-                        target_hp = 100 if target_hearts > 0 else 0
-                    else:
-                        challenger_hearts -= 1
-                        challenger_hp = 100 if challenger_hearts > 0 else 0
-                    
-                    if locals()[hearts_to_check] > 0:
-                        round_msg += f"\n💔 {defender.mention} loses a heart! {get_hearts_display(locals()[hearts_to_check])} remaining!"
-                    else:
-                        round_msg += f"\n💀 {defender.mention} has been knocked out!"
-                
                 rounds.append(round_msg)
-                # Show current HP and hearts status with red/black hearts
+                # Show current HP and hearts status
                 hearts_display = {
-                    challenger.display_name: get_hearts_display(challenger_hearts),
-                    target.display_name: get_hearts_display(target_hearts)
+                    challenger.display_name: get_hearts_display(challenger_hp),
+                    target.display_name: get_hearts_display(target_hp)
                 }
                 status = f"\n{challenger.display_name}: {challenger_hp}HP {hearts_display[challenger.display_name]}\n{target.display_name}: {target_hp}HP {hearts_display[target.display_name]}"
                 await interaction.followup.send(f"{round_msg}{status}")
             
             # Determine winner
-            winner = challenger if target_hearts <= 0 else target
-            loser = target if target_hearts <= 0 else challenger
+            winner = challenger if target_hp <= 0 else target
+            loser = target if target_hp <= 0 else challenger
             
-            # Process bets with multipliers based on remaining hearts
+            # Process bets with multipliers based on remaining health
             if message_id in active_bets:
                 guild_id = str(interaction.guild_id)
-                winner_hearts = challenger_hearts if winner == challenger else target_hearts
+                winner_hp = challenger_hp if winner == challenger else target_hp
                 
-                # Higher multiplier for more hearts remaining
-                multiplier = 1.5 + (winner_hearts * 0.5)  # 2x for 1 heart, 2.5x for 2 hearts, 3x for 3 hearts
+                # Higher multiplier for more health remaining
+                multiplier = 1.5 + (winner_hp / 100)  # Scales from 1.5x to 2.5x based on remaining HP
                 
                 for bet in active_bets[message_id]:
                     if bet['fighter'].id == winner.id:
-                        # Winner gets their bet multiplied
                         winnings = int(bet['amount'] * multiplier)
                         await update_money(guild_id, str(bet['user'].id), winnings)
-                        await interaction.followup.send(f"💰 {bet['user'].mention} won ${winnings:,} from their bet! ({multiplier}x multiplier for {winner_hearts} hearts remaining)")
+                        await interaction.followup.send(f"💰 {bet['user'].mention} won ${winnings:,} from their bet! ({multiplier:.1f}x multiplier)")
                 
                 del active_bets[message_id]
             
-            # Victory message with style based on remaining hearts
-            if winner_hearts == 3:
-                await interaction.followup.send(f"🏆 FLAWLESS VICTORY! {winner.mention} dominates the fight against {loser.mention} without losing a single heart!")
-            elif winner_hearts == 2:
-                await interaction.followup.send(f"🏆 IMPRESSIVE WIN! {winner.mention} wins decisively against {loser.mention} with {winner_hearts} hearts remaining!")
+            # Victory message
+            if winner_hp > 75:
+                await interaction.followup.send(f"🏆 DOMINANT VICTORY! {winner.mention} crushes {loser.mention} with {winner_hp}HP remaining!")
+            elif winner_hp > 50:
+                await interaction.followup.send(f"🏆 SOLID WIN! {winner.mention} defeats {loser.mention} with {winner_hp}HP remaining!")
             else:
-                await interaction.followup.send(f"🏆 CLOSE FIGHT! {winner.mention} barely edges out a victory against {loser.mention} with their last heart!")
+                await interaction.followup.send(f"🏆 CLOSE FIGHT! {winner.mention} barely defeats {loser.mention} with {winner_hp}HP remaining!")
             
             del active_fights[message_id]
 
